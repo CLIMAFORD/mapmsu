@@ -1,0 +1,15 @@
+# OS/IDE
+Thumbs.db
+.DS_Store
+.vscode/
+
+# Node / logs
+node_modules/
+*.log
+
+# Python
+__pycache__/
+
+# Backup archives
+*.zip
+*.tar.gz
