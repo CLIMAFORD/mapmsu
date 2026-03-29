@@ -17,6 +17,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Import CSVs into Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
+        run: |
+          if [ -f scripts/import_csv.js ]; then
+            node scripts/import_csv.js
+          else
+            echo "No import script found, skipping import step"
+          fi
+
       - name: Configure Pages
         uses: actions/configure-pages@v3
 
