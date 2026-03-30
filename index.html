@@ -96,7 +96,9 @@
         <script src="js/labels.js"></script>
         <script src="js/leaflet.photon.js"></script>
         <script src="js/leaflet-heat.js"></script>
+        <!-- polygonfacilities data: prefer polygonfacilities.js, fall back to MSUPolygonFacilities_1.js -->
         <script src="data/polygonfacilities.js"></script>
+        <script src="data/MSUPolygonFacilities_1.js"></script>
         <script src="data/collegecampus_2.js"></script>
         <script src="data/siriba_3.js"></script>
         <script src="data/niles_4.js"></script>
@@ -398,7 +400,11 @@
         map.createPane('pane_polygonfacilities');
         map.getPane('pane_polygonfacilities').style.zIndex = 401;
         map.getPane('pane_polygonfacilities').style['mix-blend-mode'] = 'normal';
-        var layer_polygonfacilities = new L.geoJson(json_polygonfacilities, {
+                // Try multiple possible data variable names for polygon features
+                var pf_data = (typeof json_polygonfacilities !== 'undefined') ? json_polygonfacilities :
+                                            (typeof json_MSUPolygonFacilities_1 !== 'undefined') ? json_MSUPolygonFacilities_1 : null;
+                if(pf_data){
+                var layer_polygonfacilities = new L.geoJson(pf_data, {
             attribution: '',
             interactive: true,
             dataVar: 'json_polygonfacilities',
@@ -407,8 +413,11 @@
             onEachFeature: pop_polygonfacilities,
             style: style_polygonfacilities_0,
         });
-        bounds_group.addLayer(layer_polygonfacilities);
-        map.addLayer(layer_polygonfacilities);
+                bounds_group.addLayer(layer_polygonfacilities);
+                map.addLayer(layer_polygonfacilities);
+                } else {
+                    console.warn('polygonfacilities geojson not found; skipping polygon layer');
+                }
         function pop_collegecampus_2(feature, layer) {
             var popupContent = '<table>\
                     <tr>\
