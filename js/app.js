@@ -54,17 +54,18 @@
   function showReport(){
     if(reportEl) return;
     reportEl = document.createElement('div');
-    reportEl.className = 'fixed inset-0 bg-black/50 flex items-center justify-center p-4';
+    // Inline styles to ensure modal is visible even without Tailwind
+    reportEl.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:9999;';
     reportEl.innerHTML = `
-      <div class="w-full max-w-md bg-white rounded p-4">
-        <h2 class="text-lg font-semibold mb-2">Report Issue</h2>
-        <label class="block mb-2">Description<textarea id="issueDesc" class="w-full border p-2"></textarea></label>
-        <label class="block mb-2">Photo (optional)<input id="issuePhoto" type="file" accept="image/*" capture="environment" /></label>
-        <div class="flex justify-between items-center">
-          <button id="submitIssue" class="bg-emerald-600 text-white px-4 py-2 rounded">Submit</button>
-          <button id="closeIssue" class="px-4 py-2 rounded">Close</button>
+      <div id="msu-report-dialog" style="background:#fff;color:#111;padding:16px;border-radius:8px;max-width:420px;width:100%;box-shadow:0 6px 24px rgba(0,0,0,0.2);">
+        <h2 style="margin:0 0 8px;font-size:18px;font-weight:700;">Report Issue</h2>
+        <label style="display:block;margin-bottom:8px;">Description<textarea id="issueDesc" style="width:100%;min-height:80px;padding:8px;border:1px solid #ddd;border-radius:4px;"></textarea></label>
+        <label style="display:block;margin-bottom:8px;">Photo (optional)<input id="issuePhoto" type="file" accept="image/*" capture="environment" style="display:block;margin-top:6px;" /></label>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+          <button id="submitIssue" style="background:#059669;color:#fff;padding:8px 12px;border-radius:6px;border:none;">Submit</button>
+          <button id="closeIssue" style="background:transparent;border:1px solid #ccc;padding:8px 12px;border-radius:6px;">Close</button>
         </div>
-        <div id="issueStatus" class="mt-2 text-sm text-gray-600"></div>
+        <div id="issueStatus" style="margin-top:10px;font-size:13px;color:#444"></div>
       </div>`;
     document.body.appendChild(reportEl);
     document.getElementById('closeIssue').addEventListener('click', ()=>{ location.hash = '#/'; });

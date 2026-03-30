@@ -469,6 +469,27 @@
         });
         bounds_group.addLayer(layer_collegecampus_2);
         map.addLayer(layer_collegecampus_2);
+        
+                // After all qgis2web layers are added, ensure they are visible and preserve QGIS styling as much as possible.
+                (function ensureQgisLayersVisible(){
+                    try{
+                        if(window.bounds_group && typeof window.bounds_group.getLayers === 'function'){
+                            window.bounds_group.getLayers().forEach(function(gj){
+                                // gj is usually a GeoJSON layer (featureGroup); ensure each feature has a visible style
+                                if(gj && gj.eachLayer){
+                                    gj.eachLayer(function(layer){
+                                        if(layer && layer.setStyle){
+                                            // apply a modest default that still respects existing style where possible
+                                            try{ layer.setStyle(Object.assign({ fillOpacity: 0.6, weight: 1, color: '#222', opacity: 1 }, layer.options || {})); }catch(e){}
+                                        }
+                                    });
+                                    try{ if(gj.bringToFront) gj.bringToFront(); }catch(e){}
+                                }
+                            });
+                        }
+                        console.info('QGIS layers visibility ensured');
+                    }catch(e){ console.warn('ensureQgisLayersVisible failed', e); }
+                })();
         function pop_siriba_3(feature, layer) {
             var popupContent = '<table>\
                     <tr>\
