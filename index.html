@@ -25,8 +25,8 @@
         <title>Maseno University Facility Map</title>
         <!-- Tailwind via CDN -->
         <script src="https://cdn.tailwindcss.com"></script>
-        <!-- Supabase JS -->
-        <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+        <!-- Supabase JS (use local copy to avoid tracking-prevention/storage issues) -->
+        <script src="js/supabase.min.js"></script>
     </head>
     <body class="antialiased">
         <header class="bg-slate-800 text-white p-4 flex items-center justify-between space-x-4 fixed-top" style="height:64px">
@@ -75,6 +75,7 @@
         <script src="data/amenity_10.js"></script>
         <script src="data/buildings_11.js"></script>
         <script src="data/trees_12.js"></script>
+        <script src="js/app.js"></script>
         <script>
         var map = L.map('map', {
             zoomControl:false, maxZoom:28, minZoom:1
