@@ -7,7 +7,6 @@
         <meta name="mobile-web-app-capable" content="yes">
         <meta name="apple-mobile-web-app-capable" content="yes">
         <link rel="stylesheet" href="css/leaflet.css">
-        <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
         <link rel="stylesheet" href="css/qgis2web.css">
         <link rel="stylesheet" href="css/fontawesome-all.min.css">
         <link rel="stylesheet" href="css/leaflet.photon.css">
@@ -18,15 +17,44 @@
             padding: 0;
             margin: 0;
         }
+        /* Ensure UI sits above the Leaflet map */
+        header.fixed-top { position: fixed; top: 0; left: 0; right: 0; z-index: 60; }
+        #map { margin-top: 64px; }
+        #controls, #searchResults { z-index: 70; }
         </style>
-        <title></title>
+        <title>Maseno University Facility Map</title>
+        <!-- Tailwind via CDN -->
+        <script src="https://cdn.tailwindcss.com"></script>
+        <!-- Supabase JS -->
+        <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     </head>
-    <body>
-        <div id="map">
+    <body class="antialiased">
+        <header class="bg-slate-800 text-white p-4 flex items-center justify-between space-x-4 fixed-top" style="height:64px">
+            <div class="flex items-center space-x-4">
+                <h1 class="text-xl font-semibold">Maseno University Facility Map</h1>
+                <div class="flex items-center bg-slate-700 rounded overflow-hidden">
+                    <input id="mapSearch" placeholder="Search map (any attribute)" class="px-3 py-1 w-64 bg-transparent outline-none text-sm" />
+                    <select id="searchMode" class="bg-slate-700 text-sm px-2">
+                        <option value="any">Match Any</option>
+                        <option value="all">Match All</option>
+                    </select>
+                    <button id="searchBtn" class="px-3 py-1 bg-emerald-600 text-white text-sm">Search</button>
+                </div>
+            </div>
+            <nav class="space-x-2">
+                <a href="#/" class="px-3 py-1 bg-slate-700 rounded">Map</a>
+                <a href="#/report" class="px-3 py-1 bg-emerald-600 rounded">Report Issue</a>
+            </nav>
+        </header>
+        <div id="map" style="width: 100%; height: calc(100vh - 64px)">
+        </div>
+
+        <!-- Controls -->
+        <div id="controls" class="fixed bottom-4 left-4 bg-white rounded p-3 shadow-md">
+            <label class="flex items-center space-x-2"><input id="heatToggle" type="checkbox" /> <span>Heatmap (active users)</span></label>
         </div>
         <script src="js/qgis2web_expressions.js"></script>
         <script src="js/leaflet.js"></script>
-        <script src="js/L.Control.Layers.Tree.min.js"></script>
         <script src="js/leaflet.rotatedMarker.js"></script>
         <script src="js/leaflet.pattern.js"></script>
         <script src="js/leaflet-hash.js"></script>
@@ -921,5 +949,88 @@
         map.addLayer(layer_trees_12);
         setBounds();
         </script>        
+        <script src="js/app.js"></script>
+        <script>
+        // --- Search utility: searches feature properties across all qgis2web layers ---
+        (function(){
+            function getDeclaredLayers(){
+                var names = [
+                    'layer_MSUPolygonFacilities_1','layer_collegecampus_2','layer_siriba_3','layer_niles_4',
+                    'layer_grass_5','layer_coated_6','layer_farm_7','layer_field_8','layer_flowers_9',
+                    'layer_amenity_10','layer_buildings_11','layer_trees_12'
+                ];
+                return names.map(n=>window[n]).filter(Boolean);
+            }
+
+            function featureString(feature){
+                var vals = [];
+                for(var k in feature.properties){
+                    try{ if(feature.properties[k] != null) vals.push(String(feature.properties[k])); }catch(e){}
+                }
+                return vals.join(' ').toLowerCase();
+            }
+
+            function boundsForFeature(feature){
+                var gj = L.geoJSON(feature);
+                try{ return gj.getBounds(); }catch(e){
+                    var coords = (feature.geometry && feature.geometry.coordinates) || null;
+                    if(coords && coords.length>=2) return L.latLngBounds([coords[1],coords[0]]);
+                }
+                return null;
+            }
+
+            function renderResultItem(item){
+                var div = document.createElement('div');
+                div.className = 'px-3 py-2 hover:bg-slate-100 cursor-pointer text-sm';
+                div.textContent = item.preview;
+                div.addEventListener('click', function(){
+                    if(item.bounds && item.bounds.isValid()) map.fitBounds(item.bounds.pad(1.2));
+                    else if(item.center) map.setView(item.center, 18);
+                    var popup = L.popup({maxWidth:400}).setLatLng(item.center || item.bounds.getCenter())
+                        .setContent(item.preview).openOn(map);
+                });
+                return div;
+            }
+
+            function doSearch(){
+                var q = (document.getElementById('mapSearch')||{}).value || '';
+                var mode = (document.getElementById('searchMode')||{}).value || 'any';
+                var resultsContainer = document.getElementById('searchResults');
+                resultsContainer.innerHTML = '';
+                if(!q.trim()) return;
+                var terms = q.toLowerCase().trim().split(/\s+/);
+                var layers = getDeclaredLayers();
+                var matches = [];
+                layers.forEach(function(layer){
+                    try{
+                        var geo = layer.toGeoJSON();
+                        (geo.features||[]).forEach(function(f){
+                            var s = featureString(f);
+                            var found = terms.map(t=> s.indexOf(t) !== -1 );
+                            var ok = (mode === 'all') ? found.every(Boolean) : found.some(Boolean);
+                            if(ok){
+                                var b = boundsForFeature(f);
+                                var center = b && b.isValid() ? b.getCenter() : (f.geometry && f.geometry.type === 'Point' ? L.latLng(f.geometry.coordinates[1], f.geometry.coordinates[0]) : null);
+                                matches.push({feature:f, bounds:b, center:center, preview: (f.properties && (f.properties.Name || f.properties.name || f.properties.ID || Object.values(f.properties).slice(0,3).join(' '))) || 'Feature'});
+                            }
+                        });
+                    }catch(e){ console.warn('search layer', e); }
+                });
+                if(matches.length === 0){ resultsContainer.textContent = 'No results'; return; }
+                matches.slice(0,50).forEach(function(m){ resultsContainer.appendChild(renderResultItem(m)); });
+            }
+
+            // Inject results container next to controls
+            var results = document.createElement('div');
+            results.id = 'searchResults';
+            results.className = 'fixed left-4 bottom-20 w-80 max-h-64 overflow-auto bg-white rounded shadow-md';
+            document.body.appendChild(results);
+
+            var searchBtn = document.getElementById('searchBtn');
+            if(searchBtn) searchBtn.addEventListener('click', doSearch);
+            var searchInput = document.getElementById('mapSearch');
+            if(searchInput) searchInput.addEventListener('keydown', function(e){ if(e.key === 'Enter') doSearch(); });
+        })();
+        </script>
     </body>
 </html>
