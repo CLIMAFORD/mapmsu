@@ -27,7 +27,7 @@ create table if not exists public.active_users (
 create extension if not exists postgis;
 
 -- Example pattern for each layer -- adjust column names as needed
-create table if not exists public.MSUPolygonFacilities_1 (
+create table if not exists public.polygonfacilities (
   id bigserial primary key,
   properties jsonb,
   geom geometry(Geometry,4326)

@@ -20,31 +20,63 @@
         /* Ensure UI sits above the Leaflet map */
         header.fixed-top { position: fixed; top: 0; left: 0; right: 0; z-index: 60; }
         #map { margin-top: 64px; }
+        /* Minimal fallback styles when Tailwind isn't available */
+        header.fixed-top a { color: white; text-decoration: none; }
+        header.fixed-top nav a { display: inline-block; padding: 6px 10px; margin-left:6px; background:#374151; color:#fff; border-radius:6px; }
+        header.fixed-top nav a[aria-current="true"]{ background:#16a34a }
+        #mapSearch { border: 1px solid rgba(0,0,0,0.15); }
+        #searchStatus { margin-left:8px; color:#e11d48; font-size:0.9rem; }
         #controls, #searchResults { z-index: 70; }
+        /* Side panel for showing photos */
+        .msu-side-panel {
+            position: fixed;
+            top: 64px;
+            right: 0;
+            width: 360px;
+            bottom: 0;
+            background: white;
+            box-shadow: -2px 0 8px rgba(0,0,0,0.12);
+            z-index: 120;
+            overflow-y: auto;
+            padding: 12px;
+            display: none;
+        }
+        .msu-side-panel.open { display: block; }
+        .msu-side-panel img { width: 100%; height: auto; margin-bottom: 8px; border-radius:4px; }
+        .msu-side-panel .msu-close { position: absolute; left: 8px; top: 8px; background:#eee; border-radius:4px; padding:4px 8px; cursor:pointer; }
+        /* CAMPUSACCESSMAP-like header/layout */
+        .campus-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 16px; background:#0f172a; color:#fff; position:fixed; top:0; left:0; right:0; height:64px; z-index:80; }
+        .campus-header .title { font-size:18px; font-weight:700; }
+        .campus-header .center-controls { display:flex; gap:8px; align-items:center; }
+        .campus-btn { background:#0b84ff; color:#fff; padding:6px 10px; border-radius:8px; text-decoration:none; display:inline-flex; align-items:center; gap:8px; }
+        .campus-btn.ghost { background:transparent; border:1px solid rgba(255,255,255,0.08); }
+        .campus-actions { display:flex; gap:8px; align-items:center; }
         </style>
         <title>Maseno University Facility Map</title>
         <!-- Tailwind via CDN -->
         <script src="https://cdn.tailwindcss.com"></script>
-        <!-- Supabase JS (use local copy to avoid tracking-prevention/storage issues) -->
-        <script src="js/supabase.min.js"></script>
+        <!-- Supabase JS: loaded lazily by js/app.js (CDN fallback). Remove local include to avoid 404. -->
     </head>
     <body class="antialiased">
-        <header class="bg-slate-800 text-white p-4 flex items-center justify-between space-x-4 fixed-top" style="height:64px">
-            <div class="flex items-center space-x-4">
-                <h1 class="text-xl font-semibold">Maseno University Facility Map</h1>
-                <div class="flex items-center bg-slate-700 rounded overflow-hidden">
-                    <input id="mapSearch" placeholder="Search map (any attribute)" class="px-3 py-1 w-64 bg-transparent outline-none text-sm" />
-                    <select id="searchMode" class="bg-slate-700 text-sm px-2">
+        <header class="campus-header">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <div class="title">Maseno University Facility Map</div>
+            </div>
+            <div class="center-controls">
+                <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.04);padding:6px;border-radius:8px;">
+                    <input id="mapSearch" placeholder="Search map (any attribute)" style="padding:6px 8px;border-radius:6px;background:transparent;border:none;color:#fff;min-width:260px;outline:none;" />
+                    <select id="searchMode" style="background:transparent;border:none;color:#fff;padding:6px;border-left:1px solid rgba(255,255,255,0.04);">
                         <option value="any">Match Any</option>
                         <option value="all">Match All</option>
                     </select>
-                    <button id="searchBtn" class="px-3 py-1 bg-emerald-600 text-white text-sm">Search</button>
+                    <button id="searchBtn" class="campus-btn">Search</button>
                 </div>
+                <span id="searchStatus" aria-live="polite" style="margin-left:8px;color:#f87171;font-size:0.9rem"></span>
             </div>
-            <nav class="space-x-2">
-                <a href="#/" class="px-3 py-1 bg-slate-700 rounded">Map</a>
-                <a href="#/report" class="px-3 py-1 bg-emerald-600 rounded">Report Issue</a>
-            </nav>
+            <div class="campus-actions">
+                <a id="mapBtn" class="campus-btn ghost" href="#/">Map</a>
+                <a href="#/report" class="campus-btn">Report Issue</a>
+            </div>
         </header>
         <div id="map" style="width: 100%; height: calc(100vh - 64px)">
         </div>
@@ -63,7 +95,8 @@
         <script src="js/labelgun.min.js"></script>
         <script src="js/labels.js"></script>
         <script src="js/leaflet.photon.js"></script>
-        <script src="data/MSUPolygonFacilities_1.js"></script>
+        <script src="js/leaflet-heat.js"></script>
+        <script src="data/polygonfacilities.js"></script>
         <script src="data/collegecampus_2.js"></script>
         <script src="data/siriba_3.js"></script>
         <script src="data/niles_4.js"></script>
@@ -148,6 +181,8 @@
             position: 'topleft'
         }).addTo(map);
         var bounds_group = new L.featureGroup([]);
+        // expose for other scripts to find searchable layers
+        window.bounds_group = bounds_group;
         function setBounds() {
         }
         map.createPane('pane_OSMStandard_0');
@@ -163,41 +198,60 @@
         });
         layer_OSMStandard_0;
         map.addLayer(layer_OSMStandard_0);
-        function pop_MSUPolygonFacilities_1(feature, layer) {
-            var popupContent = '<table>\
-                    <tr>\
-                        <td colspan="2">' + (feature.properties['fid'] !== null ? autolinker.link(String(feature.properties['fid']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
-                    </tr>\
-                    <tr>\
-                        <td colspan="2">' + (feature.properties['id'] !== null ? autolinker.link(String(feature.properties['id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
-                    </tr>\
-                    <tr>\
-                        <td colspan="2">' + (feature.properties['category'] !== null ? autolinker.link(String(feature.properties['category']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
-                    </tr>\
-                    <tr>\
-                        <td colspan="2">' + (feature.properties['type'] !== null ? autolinker.link(String(feature.properties['type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
-                    </tr>\
-                    <tr>\
-                        <td colspan="2">' + (feature.properties['location'] !== null ? autolinker.link(String(feature.properties['location']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
-                    </tr>\
-                    <tr>\
-                        <td colspan="2">' + (feature.properties['Name'] !== null ? autolinker.link(String(feature.properties['Name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
-                    </tr>\
-                    <tr>\
-                        <td colspan="2">' + (feature.properties['Photo'] !== null ? autolinker.link(String(feature.properties['Photo']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
-                    </tr>\
-                    <tr>\
-                        <td colspan="2">' + (feature.properties['new_bld_id'] !== null ? autolinker.link(String(feature.properties['new_bld_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
-                    </tr>\
-                </table>';
+        // Alternate base layer (satellite) and a simple Map button toggle
+        var layer_Satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            pane: 'pane_OSMStandard_0',
+            attribution: 'Esri Imagery',
+            minZoom: 1, maxZoom: 19
+        });
+        var currentBase = 'osm';
+        document.getElementById('mapBtn').addEventListener('click', function(e){
+            e.preventDefault();
+            // toggle base layer
+            if(currentBase === 'osm'){
+                map.removeLayer(layer_OSMStandard_0); map.addLayer(layer_Satellite); currentBase = 'sat';
+                this.textContent = 'Satellite';
+            } else {
+                map.removeLayer(layer_Satellite); map.addLayer(layer_OSMStandard_0); currentBase = 'osm';
+                this.textContent = 'Map';
+            }
+            // also reset view
+            try{ map.fitBounds([[-0.010619932700469025,34.59213856820358],[0.000979874638680536,34.60820249159153]]); }catch(e){}
+        });
+        function pop_polygonfacilities(feature, layer) {
+            // Build a minimal popup: show Name and Location. If this feature is a Building, show Type.
+            var name = feature.properties['Name'] || feature.properties['name'] || null;
+            var loc = feature.properties['location'] || feature.properties['Location'] || null;
+            // 'type' may be under 'type' or 'Category' depending on source
+            var btype = feature.properties['type'] || feature.properties['Type'] || feature.properties['Category'] || null;
+            var rows = '';
+            if(name) rows += '<tr><td><strong>Name</strong></td><td>' + autolinker.link(String(name).replace(/'/g, '\'')) + '</td></tr>';
+            if(loc) rows += '<tr><td><strong>Location</strong></td><td>' + autolinker.link(String(loc).replace(/'/g, '\'')) + '</td></tr>';
+            // Only include Type for buildings
+            if(btype && String(btype).toLowerCase().indexOf('build') !== -1) {
+                rows += '<tr><td><strong>Type</strong></td><td>' + autolinker.link(String(btype).replace(/'/g, '\'')) + '</td></tr>';
+            }
+            var popupContent = '<table>' + rows + '</table>';
             var content = removeEmptyRowsFromPopupContent(popupContent, feature);
-			layer.on('popupopen', function(e) {
-				addClassToPopupIfMedia(content, e.popup);
-			});
-			layer.bindPopup(content, { maxHeight: 400 });
+            layer.bindPopup(content, { maxHeight: 400 });
+            // When popup opens, also open the right-side panel showing interior/exterior photos if available
+            layer.on('popupopen', function(e){
+                addClassToPopupIfMedia(content, e.popup);
+                // Populate side panel by trying feature props first, then Supabase `bld_images` table
+                (async function(){
+                    try{
+                        var imgs = { interior: null, exterior: null };
+                        if(window.fetchBuildingImages) imgs = await window.fetchBuildingImages(feature);
+                        // final fallback to Photo property
+                        if(!imgs.interior && feature.properties['Photo']) imgs.interior = feature.properties['Photo'];
+                        if(!imgs.exterior && feature.properties['Photo']) imgs.exterior = imgs.exterior || feature.properties['Photo'];
+                        openSidePanel({ title: name, interior: imgs.interior, exterior: imgs.exterior });
+                    }catch(ex){ console.warn('Error loading feature images', ex); openSidePanel({ title: name }); }
+                })();
+            });
         }
 
-        function style_MSUPolygonFacilities_1_0(feature) {
+        function style_polygonfacilities_0(feature) {
             switch(String(feature.properties['Category'])) {
                 case 'Building':
                     return {
@@ -341,20 +395,20 @@
                     break;
             }
         }
-        map.createPane('pane_MSUPolygonFacilities_1');
-        map.getPane('pane_MSUPolygonFacilities_1').style.zIndex = 401;
-        map.getPane('pane_MSUPolygonFacilities_1').style['mix-blend-mode'] = 'normal';
-        var layer_MSUPolygonFacilities_1 = new L.geoJson(json_MSUPolygonFacilities_1, {
+        map.createPane('pane_polygonfacilities');
+        map.getPane('pane_polygonfacilities').style.zIndex = 401;
+        map.getPane('pane_polygonfacilities').style['mix-blend-mode'] = 'normal';
+        var layer_polygonfacilities = new L.geoJson(json_polygonfacilities, {
             attribution: '',
             interactive: true,
-            dataVar: 'json_MSUPolygonFacilities_1',
-            layerName: 'layer_MSUPolygonFacilities_1',
-            pane: 'pane_MSUPolygonFacilities_1',
-            onEachFeature: pop_MSUPolygonFacilities_1,
-            style: style_MSUPolygonFacilities_1_0,
+            dataVar: 'json_polygonfacilities',
+            layerName: 'layer_polygonfacilities',
+            pane: 'pane_polygonfacilities',
+            onEachFeature: pop_polygonfacilities,
+            style: style_polygonfacilities_0,
         });
-        bounds_group.addLayer(layer_MSUPolygonFacilities_1);
-        map.addLayer(layer_MSUPolygonFacilities_1);
+        bounds_group.addLayer(layer_polygonfacilities);
+        map.addLayer(layer_polygonfacilities);
         function pop_collegecampus_2(feature, layer) {
             var popupContent = '<table>\
                     <tr>\
