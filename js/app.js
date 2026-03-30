@@ -8,10 +8,8 @@
   const ACTIVE_USERS_TABLE = 'active_users';
   const ISSUES_TABLE = 'issues';
 
-  // Initialize Supabase client (UMD exposes `supabase` when loaded via script)
-  let supabase = (window.supabase || window.supabaseJs || window.supabaseClient || (typeof supabase !== 'undefined' ? supabase : null)) && (window.supabase || window.supabaseJs || window.supabaseClient || supabase).createClient
-    ? (window.supabase || window.supabaseJs || window.supabaseClient || supabase).createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-    : null;
+  // Initialize Supabase client (deferred). We'll attempt to use any UMD `window.supabase` if present, otherwise lazy-load.
+  let supabase = null;
 
   async function loadSupabaseIfMissing(){
     if(supabase) return supabase;
@@ -45,6 +43,11 @@
   }
   window.addEventListener('hashchange', route);
   document.addEventListener('DOMContentLoaded', route);
+
+  // If Supabase UMD already present on window, initialize now (avoid TDZ by not referencing `supabase` identifier in its own initializer)
+  if(window.supabase && window.supabase.createClient){
+    try{ supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); setupRealtimeSubscriptions(); }catch(e){ console.warn('Supabase init failed', e); }
+  }
 
   // Report UI
   let reportEl = null;
