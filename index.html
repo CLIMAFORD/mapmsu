@@ -413,6 +413,9 @@
             onEachFeature: pop_polygonfacilities,
             style: style_polygonfacilities_0,
         });
+                // expose for debugging
+                window.layer_polygonfacilities = layer_polygonfacilities;
+                console.info('polygon features:', (pf_data.features && pf_data.features.length) || 0);
                 bounds_group.addLayer(layer_polygonfacilities);
                 map.addLayer(layer_polygonfacilities);
                 } else {
