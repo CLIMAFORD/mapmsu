@@ -416,8 +416,19 @@
                 // expose for debugging
                 window.layer_polygonfacilities = layer_polygonfacilities;
                 console.info('polygon features:', (pf_data.features && pf_data.features.length) || 0);
-                bounds_group.addLayer(layer_polygonfacilities);
-                map.addLayer(layer_polygonfacilities);
+                // Make sure polygons are visible: give a contrasting outline and reasonable opacity,
+                // then bring the layer to front so it isn't hidden under tiles or controls.
+                try{
+                    layer_polygonfacilities.eachLayer(function(l){
+                        if(l.setStyle) l.setStyle({ fillOpacity: 0.6, weight: 1, color: '#222', opacity: 1 });
+                    });
+                    bounds_group.addLayer(layer_polygonfacilities);
+                    map.addLayer(layer_polygonfacilities);
+                    layer_polygonfacilities.bringToFront();
+                }catch(e){
+                    bounds_group.addLayer(layer_polygonfacilities);
+                    map.addLayer(layer_polygonfacilities);
+                }
                 } else {
                     console.warn('polygonfacilities geojson not found; skipping polygon layer');
                 }
