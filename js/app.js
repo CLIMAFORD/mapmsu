@@ -18,35 +18,35 @@
     try{
       await new Promise((res, rej)=>{
         var s = document.createElement('script'); s.src = cdn; s.onload = res; s.onerror = rej; document.head.appendChild(s);
-      });
-      if(window.supabase && window.supabase.createClient){
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.info('Loaded Supabase from CDN fallback');
-        // after we have supabase, wire realtime subscriptions
-        try{ setupRealtimeSubscriptions(); }catch(e){}
-        return supabase;
-      }
-    }catch(e){ console.warn('Could not load Supabase CDN fallback', e); }
-    console.error('Supabase client not available. Ensure js/supabase.min.js is loaded.');
-    return null;
-  }
-
-  // Utility: generate session id
-  let sessionId = localStorage.getItem('msu_session_id');
-  if(!sessionId){ sessionId = 's_' + Date.now() + '_' + Math.random().toString(36).slice(2,9); localStorage.setItem('msu_session_id', sessionId); }
-
-  // Routing
-  function route(){
-    const hash = location.hash || '#/';
-    if(hash.startsWith('#/report')){ showReport(); }
-    else { hideReport(); }
-  }
-  window.addEventListener('hashchange', route);
-  document.addEventListener('DOMContentLoaded', route);
-
-  // If Supabase UMD already present on window, initialize now (avoid TDZ by not referencing `supabase` identifier in its own initializer)
-  if(window.supabase && window.supabase.createClient){
-    try{ supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); setupRealtimeSubscriptions(); }catch(e){ console.warn('Supabase init failed', e); }
+      if(reportEl) return;
+      reportEl = document.createElement('div');
+      // Use inline styles so the modal is visible even without Tailwind
+      reportEl.style.position = 'fixed';
+      reportEl.style.left = '0'; reportEl.style.top = '0'; reportEl.style.right = '0'; reportEl.style.bottom = '0';
+      reportEl.style.background = 'rgba(0,0,0,0.5)';
+      reportEl.style.display = 'flex'; reportEl.style.alignItems = 'center'; reportEl.style.justifyContent = 'center';
+      reportEl.style.zIndex = '2000';
+      reportEl.innerHTML = `
+        <div style="width:100%;max-width:520px;background:#fff;border-radius:8px;padding:16px;box-shadow:0 6px 24px rgba(0,0,0,.2);">
+          <h2 style="margin:0 0 8px 0;font-size:18px;font-weight:600">Report Issue</h2>
+          <div style="margin-bottom:8px"><label style="display:block;font-weight:600;margin-bottom:4px">Description</label><textarea id="issueDesc" style="width:100%;height:90px;padding:8px;border:1px solid #ccc;border-radius:4px"></textarea></div>
+          <div style="margin-bottom:8px"><label style="display:block;font-weight:600;margin-bottom:4px">Photo (optional)</label><input id="issuePhoto" type="file" accept="image/*" /></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button id="submitIssue" style="background:#0b84ff;color:#fff;padding:8px 12px;border-radius:6px;border:none">Submit</button><button id="closeIssue" style="padding:8px 12px;border-radius:6px;border:1px solid #ccc;background:#fff">Close</button></div>
+          <div id="issueStatus" style="margin-top:10px;color:#333;font-size:13px"></div>
+        </div>`;
+      document.body.appendChild(reportEl);
+      document.getElementById('closeIssue').addEventListener('click', ()=>{ location.hash = '#/'; });
+      const submitBtn = document.getElementById('submitIssue');
+      submitBtn.addEventListener('click', submitIssue);
+      // Try to lazily load/configure Supabase when opening the dialog so reporting can work
+      (async function(){
+        const statusEl = document.getElementById('issueStatus');
+        if(supabase){ if(statusEl) statusEl.textContent = ''; submitBtn.disabled = false; return; }
+        if(statusEl) statusEl.textContent = 'Initializing reporting client...';
+        const s = await loadSupabaseIfMissing();
+        if(s){ supabase = s; window.MSUMapApp = Object.assign(window.MSUMapApp||{}, { supabase }); if(statusEl) statusEl.textContent = ''; submitBtn.disabled = false; }
+        else { if(statusEl) statusEl.textContent = 'Reporting disabled: Supabase client not available. Add js/supabase.min.js or configure SUPABASE_* keys.'; submitBtn.disabled = true; }
+      })();
   }
 
   // Report UI
@@ -54,18 +54,17 @@
   function showReport(){
     if(reportEl) return;
     reportEl = document.createElement('div');
-    // Inline styles to ensure modal is visible even without Tailwind
-    reportEl.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:9999;';
+    reportEl.className = 'fixed inset-0 bg-black/50 flex items-center justify-center p-4';
     reportEl.innerHTML = `
-      <div id="msu-report-dialog" style="background:#fff;color:#111;padding:16px;border-radius:8px;max-width:420px;width:100%;box-shadow:0 6px 24px rgba(0,0,0,0.2);">
-        <h2 style="margin:0 0 8px;font-size:18px;font-weight:700;">Report Issue</h2>
-        <label style="display:block;margin-bottom:8px;">Description<textarea id="issueDesc" style="width:100%;min-height:80px;padding:8px;border:1px solid #ddd;border-radius:4px;"></textarea></label>
-        <label style="display:block;margin-bottom:8px;">Photo (optional)<input id="issuePhoto" type="file" accept="image/*" capture="environment" style="display:block;margin-top:6px;" /></label>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
-          <button id="submitIssue" style="background:#059669;color:#fff;padding:8px 12px;border-radius:6px;border:none;">Submit</button>
-          <button id="closeIssue" style="background:transparent;border:1px solid #ccc;padding:8px 12px;border-radius:6px;">Close</button>
+      <div class="w-full max-w-md bg-white rounded p-4">
+        <h2 class="text-lg font-semibold mb-2">Report Issue</h2>
+        <label class="block mb-2">Description<textarea id="issueDesc" class="w-full border p-2"></textarea></label>
+        <label class="block mb-2">Photo (optional)<input id="issuePhoto" type="file" accept="image/*" capture="environment" /></label>
+        <div class="flex justify-between items-center">
+          <button id="submitIssue" class="bg-emerald-600 text-white px-4 py-2 rounded">Submit</button>
+          <button id="closeIssue" class="px-4 py-2 rounded">Close</button>
         </div>
-        <div id="issueStatus" style="margin-top:10px;font-size:13px;color:#444"></div>
+        <div id="issueStatus" class="mt-2 text-sm text-gray-600"></div>
       </div>`;
     document.body.appendChild(reportEl);
     document.getElementById('closeIssue').addEventListener('click', ()=>{ location.hash = '#/'; });
@@ -222,13 +221,28 @@
       if(statusEl){ statusEl.textContent = 'Could not find facility'; setTimeout(()=>{ if(statusEl) statusEl.textContent = ''; }, 3000); }
       return;
     }
-    // Zoom to first match and open popup
+    // Zoom to first match, highlight matches and open side panel for first
     const first = matches[0];
     try{
+      clearHighlights();
+      matches.forEach(m => {
+        try{
+          if(m.setStyle) m.setStyle({ color: '#ff3333', weight: 3, fillOpacity: 0.7 });
+          window._msu_highlights = window._msu_highlights || [];
+          window._msu_highlights.push(m);
+        }catch(e){}
+      });
       if(typeof first.getBounds === 'function'){ map.fitBounds(first.getBounds()); }
       else if(typeof first.getLatLng === 'function'){ map.setView(first.getLatLng(), 18); }
       if(typeof first.openPopup === 'function') first.openPopup();
       if(statusEl) statusEl.textContent = '';
+      // show side panel with building images
+      (async ()=>{
+        try{
+          const imgs = await fetchBuildingImages(first.feature || (first && first.feature));
+          openSidePanel({ title: (first.feature && (first.feature.properties.Name || first.feature.properties.name)) || 'Feature', interior: imgs.interior, exterior: imgs.exterior });
+        }catch(e){ console.warn('Could not open side panel', e); }
+      })();
     }catch(e){ console.warn('Could not focus on search result', e); }
   }
 
@@ -287,5 +301,42 @@
   window.fetchBuildingImages = fetchBuildingImages;
 
   window.MSUMapApp = { supabase, startActiveTracking, stopActiveTracking, refreshHeatmap, fetchBuildingImages };
+
+  // Highlight helpers
+  function clearHighlights(){
+    try{
+      if(window._msu_highlights && Array.isArray(window._msu_highlights)){
+        window._msu_highlights.forEach(l => { try{ if(l.setStyle) l.setStyle({ color: '#222', weight: 1, fillOpacity: 1 }); }catch(e){} });
+      }
+    }catch(e){}
+    window._msu_highlights = [];
+  }
+
+  // Side panel functions: create, open, close
+  function openSidePanel(data){
+    let panel = document.getElementById('msuSidePanel');
+    if(!panel){
+      panel = document.createElement('div');
+      panel.id = 'msuSidePanel';
+      panel.className = 'msu-side-panel';
+      panel.innerHTML = '<div class="msu-close" id="msuSideClose">Close</div><div id="msuSideContent"></div>';
+      document.body.appendChild(panel);
+      document.getElementById('msuSideClose').addEventListener('click', closeSidePanel);
+    }
+    const content = document.getElementById('msuSideContent');
+    content.innerHTML = '';
+    if(data && data.title) content.innerHTML += '<h3 style="margin-top:0">' + String(data.title) + '</h3>';
+    if(data && data.exterior) content.innerHTML += '<div><strong>Exterior</strong><img src="' + data.exterior + '" alt="exterior"></div>';
+    if(data && data.interior) content.innerHTML += '<div><strong>Interior</strong><img src="' + data.interior + '" alt="interior"></div>';
+    panel.classList.add('open');
+  }
+
+  function closeSidePanel(){
+    const panel = document.getElementById('msuSidePanel');
+    if(panel) panel.classList.remove('open');
+    clearHighlights();
+  }
+
+  window.MSUMapApp = Object.assign(window.MSUMapApp || {}, { clearHighlights, openSidePanel, closeSidePanel });
 
 })();
