@@ -235,11 +235,15 @@
     const mode = (searchMode && searchMode.value) ? searchMode.value : 'any';
     const group = (window.bounds_group && typeof window.bounds_group.getLayers === 'function') ? window.bounds_group : null;
     const statusEl = document.getElementById('searchStatus');
+    console.debug('doSearch()', { q, mode, group });
+    try{ if(group && typeof group.getLayers === 'function'){ console.debug('bounds_group has', group.getLayers().length, 'layers'); } }catch(e){ console.debug('bounds_group.getLayers error', e); }
     if(!group){ if(statusEl) statusEl.textContent = 'Search not available'; console.warn('No searchable layer group found'); return; }
     const matches = [];
     try{
       const gjLayers = group.getLayers();
+      console.debug('search: iterating', gjLayers.length, 'geojson layers');
       gjLayers.forEach(gj => {
+        try{ console.debug('layer', gj && (gj.layerName || gj.options && gj.options.layerName) ); }catch(e){}
         if(!gj || typeof gj.getLayers !== 'function') return;
         gj.getLayers().forEach(fl => {
           const props = (fl && fl.feature && fl.feature.properties) ? fl.feature.properties : {};
