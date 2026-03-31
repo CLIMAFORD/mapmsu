@@ -239,5 +239,74 @@
   window.MSUMapApp = Object.assign(window.MSUMapApp || {}, { clearHighlights, openSidePanel, closeSidePanel });
 
   
+  // --- Fresh Routing / Directions (OSRM) ---
+  (function(){
+    let routeLayer = null;
+    let originMarker = null, destMarker = null;
+    let routingSelectMode = null; // 'from' or 'to'
+
+    function parseLatLng(v){
+      if(!v) return null;
+      const m = String(v).trim().match(/(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/);
+      if(!m) return null;
+      const a = parseFloat(m[1]), b = parseFloat(m[2]);
+      if(!isFinite(a) || !isFinite(b)) return null;
+      // assume input is "lat, lng"
+      return L.latLng(a, b);
+    }
+
+    function getCurrentPosition(options){
+      return new Promise((resolve, reject)=>{
+        if(!navigator.geolocation) return reject(new Error('Geolocation not supported'));
+        navigator.geolocation.getCurrentPosition(resolve, reject, options);
+      });
+    }
+
+    function clearRoute(){
+      try{ if(routeLayer){ map.removeLayer(routeLayer); routeLayer = null; } }catch(e){}
+      try{ if(originMarker){ map.removeLayer(originMarker); originMarker = null; } }catch(e){}
+      try{ if(destMarker){ map.removeLayer(destMarker); destMarker = null; } }catch(e){}
+      const s = document.getElementById('dirSummary'); if(s) s.innerHTML = '';
+      const st = document.getElementById('dirSteps'); if(st) st.innerHTML = '';
+    }
+
+    function formatDistance(m){ if(typeof m !== 'number') return ''; if(m>=1000) return (m/1000).toFixed(2)+' km'; return Math.round(m)+' m'; }
+    function formatDuration(s){ if(typeof s !== 'number') return ''; if(s>=3600) return Math.round(s/3600)+' h '+Math.round((s%3600)/60)+' m'; if(s>=60) return Math.round(s/60)+' m '+Math.round(s%60)+' s'; return Math.round(s)+' s'; }
+
+    async function routeBetween(a, b){
+      if(!a || !b) return;
+      try{
+        // Ensure values look valid
+        if(!isFinite(a.lat) || !isFinite(a.lng) || !isFinite(b.lat) || !isFinite(b.lng)) throw new Error('Invalid coordinates');
+        const url = `https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson&steps=true`;
+        const resp = await fetch(url, {cache: 'no-store'});
+        if(!resp.ok) throw new Error('Routing API error ' + resp.status);
+        const data = await resp.json();
+        if(!data || !data.routes || !data.routes.length) throw new Error('No route found');
+        const r = data.routes[0];
+        // remove old
+        if(routeLayer) try{ map.removeLayer(routeLayer); }catch(e){}
+        routeLayer = L.geoJSON(r.geometry || r, { style: { color: '#0b84ff', weight: 5, opacity: 0.9 } }).addTo(map);
+        try{ if(routeLayer.getBounds && routeLayer.getBounds().isValid()) map.fitBounds(routeLayer.getBounds().pad(0.08)); }catch(e){}
+        const summary = document.getElementById('dirSummary'); if(summary) summary.innerHTML = `<div><strong>Distance:</strong> ${formatDistance(r.distance)} — <strong>Duration:</strong> ${formatDuration(r.duration)}</div>`;
+        const stepsEl = document.getElementById('dirSteps'); if(stepsEl){ stepsEl.innerHTML = ''; const legs = r.legs || []; legs.forEach(leg=>{ const ol = document.createElement('ol'); (leg.steps||[]).forEach(s=>{ const li = document.createElement('li'); li.style.marginBottom='6px'; const instr = (s.maneuver && (s.maneuver.instruction || s.maneuver.type)) || s.name || ''; li.innerText = `${formatDistance(s.distance)} — ${formatDuration(s.duration)} — ${instr}`; ol.appendChild(li); }); stepsEl.appendChild(ol); }); }
+      }catch(err){ console.warn('routeBetween error', err); const summary = document.getElementById('dirSummary'); if(summary) summary.innerText = 'Routing error: ' + err.message; }
+    }
+
+    // map click selection
+    try{ if(typeof map !== 'undefined' && map && map.on){ map.on('click', function(e){ if(!routingSelectMode) return; const latlng = e.latlng; if(!latlng) return; if(routingSelectMode === 'from'){ if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(latlng).addTo(map); const o = document.getElementById('dirOrigin'); if(o) o.value = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`; } else if(routingSelectMode === 'to'){ if(destMarker) try{ map.removeLayer(destMarker); }catch(e){} destMarker = L.marker(latlng).addTo(map); const d = document.getElementById('dirDest'); if(d) d.value = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`; } routingSelectMode = null; }); } }catch(e){ console.warn('map click routing attach failed', e); }
+
+    function attachDirUI(){
+      const fromMap = document.getElementById('dirFromMap'); if(fromMap) fromMap.addEventListener('click', ()=>{ routingSelectMode = 'from'; try{ alert('Click on the map to select origin'); }catch(e){} });
+      const toMap = document.getElementById('dirToMap'); if(toMap) toMap.addEventListener('click', ()=>{ routingSelectMode = 'to'; try{ alert('Click on the map to select destination'); }catch(e){} });
+      const useMy = document.getElementById('dirUseMyLocation'); if(useMy) useMy.addEventListener('click', async ()=>{ try{ const pos = await getCurrentPosition({enableHighAccuracy:true, timeout:10000}); const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude); if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(latlng).addTo(map); const o = document.getElementById('dirOrigin'); if(o) o.value = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`; try{ map.setView(latlng, 17); }catch(e){} }catch(err){ console.warn('geolocation failed', err); alert('Could not get location: '+(err.message||err)); } });
+      const routeBtn = document.getElementById('dirRoute'); if(routeBtn) routeBtn.addEventListener('click', async ()=>{
+        const o = document.getElementById('dirOrigin'); const d = document.getElementById('dirDest'); if(!o || !d) return; const a = parseLatLng(o.value); const b = parseLatLng(d.value); if(!a || !b){ alert('Please enter or select origin and destination (latitude, longitude)'); return; } if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(a).addTo(map); if(destMarker) try{ map.removeLayer(destMarker); }catch(e){} destMarker = L.marker(b).addTo(map); await routeBetween(a,b);
+      });
+      const clearBtn = document.getElementById('dirClear'); if(clearBtn) clearBtn.addEventListener('click', ()=>{ clearRoute(); });
+    }
+
+    if(document.readyState === 'complete' || document.readyState === 'interactive') attachDirUI(); else document.addEventListener('DOMContentLoaded', attachDirUI);
+  })();
 
 })();
