@@ -191,6 +191,44 @@
   if(searchBtn) searchBtn.addEventListener('click', doSearch);
   if(searchInput) searchInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') doSearch(); });
 
+  // Search navigation state
+  let _searchMatches = [];
+  let _searchIndex = -1;
+
+  // Next / Prev handlers
+  const searchNextBtn = document.getElementById('searchNext');
+  const searchPrevBtn = document.getElementById('searchPrev');
+  const searchCountEl = document.getElementById('searchCount');
+  if(searchNextBtn) searchNextBtn.addEventListener('click', ()=>{ if(_searchMatches.length) { _searchIndex = (_searchIndex + 1) % _searchMatches.length; focusResult(_searchIndex); updateSearchControls(); } });
+  if(searchPrevBtn) searchPrevBtn.addEventListener('click', ()=>{ if(_searchMatches.length) { _searchIndex = (_searchIndex - 1 + _searchMatches.length) % _searchMatches.length; focusResult(_searchIndex); updateSearchControls(); } });
+
+  function updateSearchControls(){
+    if(!searchCountEl) return;
+    if(!_searchMatches || !_searchMatches.length){ searchCountEl.textContent = '0 / 0'; return; }
+    searchCountEl.textContent = (_searchIndex+1) + ' / ' + _searchMatches.length;
+  }
+
+  function focusResult(i){
+    if(!_searchMatches || !_searchMatches.length) return;
+    const item = _searchMatches[i];
+    if(!item) return;
+    try{
+      // clear previous highlights, then highlight this one
+      clearHighlights();
+      if(item.setStyle) item.setStyle({ color: '#ff3333', weight: 3, fillOpacity: 0.7 });
+      window._msu_highlights = [item];
+      // fit to bounds of all matches when focusing first time
+      try{
+        const bounds = new L.LatLngBounds();
+        _searchMatches.forEach(m => { try{ if(typeof m.getBounds === 'function') bounds.extend(m.getBounds()); else if(typeof m.getLatLng === 'function') bounds.extend(m.getLatLng()); }catch(e){} });
+        if(bounds.isValid && bounds.isValid()) map.fitBounds(bounds.pad(0.25));
+      }catch(e){}
+      if(typeof item.openPopup === 'function') item.openPopup();
+      // open side panel with images for this feature
+      (async ()=>{ try{ const imgs = await fetchBuildingImages(item.feature || (item && item.feature)); openSidePanel({ title: (item.feature && (item.feature.properties.Name || item.feature.properties.name)) || 'Feature', interior: imgs.interior, exterior: imgs.exterior }); }catch(e){}})();
+    }catch(e){ console.warn('focusResult error', e); }
+  }
+
   function doSearch(){
     const q = (searchInput && searchInput.value) ? String(searchInput.value).trim() : '';
     if(!q) return;
@@ -221,28 +259,14 @@
       if(statusEl){ statusEl.textContent = 'Could not find facility'; setTimeout(()=>{ if(statusEl) statusEl.textContent = ''; }, 3000); }
       return;
     }
-    // Zoom to first match, highlight matches and open side panel for first
+    // populate navigation state and focus on first match
+    _searchMatches = matches;
+    _searchIndex = 0;
+    updateSearchControls();
     const first = matches[0];
     try{
-      clearHighlights();
-      matches.forEach(m => {
-        try{
-          if(m.setStyle) m.setStyle({ color: '#ff3333', weight: 3, fillOpacity: 0.7 });
-          window._msu_highlights = window._msu_highlights || [];
-          window._msu_highlights.push(m);
-        }catch(e){}
-      });
-      if(typeof first.getBounds === 'function'){ map.fitBounds(first.getBounds()); }
-      else if(typeof first.getLatLng === 'function'){ map.setView(first.getLatLng(), 18); }
-      if(typeof first.openPopup === 'function') first.openPopup();
+      focusResult(0);
       if(statusEl) statusEl.textContent = '';
-      // show side panel with building images
-      (async ()=>{
-        try{
-          const imgs = await fetchBuildingImages(first.feature || (first && first.feature));
-          openSidePanel({ title: (first.feature && (first.feature.properties.Name || first.feature.properties.name)) || 'Feature', interior: imgs.interior, exterior: imgs.exterior });
-        }catch(e){ console.warn('Could not open side panel', e); }
-      })();
     }catch(e){ console.warn('Could not focus on search result', e); }
   }
 
