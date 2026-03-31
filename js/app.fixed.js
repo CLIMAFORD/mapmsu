@@ -96,10 +96,35 @@
     try{
       function attach(){
         const el = document.getElementById('heatToggle');
-        if(!el) return;
-        el.addEventListener('change', async function(e){
-          if(e.target.checked){ await loadSupabaseIfMissing(); startActiveTracking(); refreshHeatmap(); } else { stopActiveTracking(); if(_serverHeatLayer) try{ map.removeLayer(_serverHeatLayer); }catch(e){} _serverHeatLayer = null; }
-        });
+        if(el){
+          el.addEventListener('change', async function(e){
+            if(e.target.checked){
+              // Prompt for geolocation permission immediately (must be in user gesture)
+              try{
+                // If Permissions API available, check before requesting
+                if(navigator.permissions && navigator.permissions.query){
+                  try{ const p = await navigator.permissions.query({ name: 'geolocation' }); if(p.state === 'denied'){ alert('Location permission is denied for this site. Please enable location permissions in your browser.'); e.target.checked = false; return; } }catch(err){}
+                }
+                // Directly request current position to trigger browser prompt
+                await new Promise((res, rej)=>{ if(!navigator.geolocation) return rej(new Error('Geolocation not supported')); navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:false, timeout:10000 }); });
+              }catch(err){ alert('Could not get location permission: ' + (err.message || err)); e.target.checked = false; return; }
+              await loadSupabaseIfMissing();
+              startActiveTracking();
+              refreshHeatmap();
+            } else {
+              stopActiveTracking();
+              if(_serverHeatLayer) try{ map.removeLayer(_serverHeatLayer); }catch(e){} _serverHeatLayer = null;
+            }
+          });
+        }
+
+        // Fallback: ensure Actions button toggles panel if app.js listener missed attaching
+        try{
+          const actionsBtn = document.getElementById('actionsBtn');
+          if(actionsBtn){
+            actionsBtn.addEventListener('click', function(ev){ ev.preventDefault(); const p = document.getElementById('msuActionsPanel'); if(p) p.classList.toggle('open'); });
+          }
+        }catch(e){}
       }
       if(document.readyState === 'complete' || document.readyState === 'interactive') attach(); else document.addEventListener('DOMContentLoaded', attach);
     }catch(e){ /* ignore */ }
