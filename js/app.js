@@ -234,6 +234,8 @@
         try{ console.debug('layer', gj && (gj.layerName || gj.options && gj.options.layerName) ); }catch(e){}
         if(!gj || typeof gj.getLayers !== 'function') return;
         gj.getLayers().forEach(fl => {
+          // Only consider layers that have a popup bound (visible features with popup)
+          try{ if(typeof fl.getPopup === 'function' && !fl.getPopup()) return; }catch(e){}
           const props = (fl && fl.feature && fl.feature.properties) ? fl.feature.properties : {};
           const values = Object.values(props).filter(v=>v!==null&&v!==undefined).map(v=>String(v));
           if(mode === 'any'){
@@ -278,12 +280,14 @@
           gjLayers.forEach(gj => {
             if(!gj || typeof gj.getLayers !== 'function') return;
             gj.getLayers().forEach(fl => {
-              try{
-                const props = (fl && fl.feature && fl.feature.properties) ? fl.feature.properties : {};
-                const name = (props.Name || props.name || props.NAME || '').toString();
-                if(name && candidateNames.has(name)) matches.push(fl);
-              }catch(e){}
-            });
+                try{
+                  // Only include layers that have a popup bound
+                  try{ if(typeof fl.getPopup === 'function' && !fl.getPopup()) return; }catch(e){}
+                  const props = (fl && fl.feature && fl.feature.properties) ? fl.feature.properties : {};
+                  const name = (props.Name || props.name || props.NAME || '').toString();
+                  if(name && candidateNames.has(name)) matches.push(fl);
+                }catch(e){}
+              });
           });
         }
       }catch(e){ console.warn('fallback search error', e); }
