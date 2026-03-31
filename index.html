@@ -272,6 +272,8 @@
         }
         map.createPane('pane_OSMStandard_0');
         map.getPane('pane_OSMStandard_0').style.zIndex = 10;
+        // hide base tiles visually while keeping layer available for toggling
+        map.getPane('pane_OSMStandard_0').style.display = 'none';
         var layer_OSMStandard_0 = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             pane: 'pane_OSMStandard_0',
             opacity: 1.0,
@@ -482,6 +484,8 @@
         }
         map.createPane('pane_polygonfacilities');
         map.getPane('pane_polygonfacilities').style.zIndex = 20;
+        // hide polygon features initially
+        map.getPane('pane_polygonfacilities').style.display = 'none';
         map.getPane('pane_polygonfacilities').style['mix-blend-mode'] = 'normal';
                 // Try multiple possible data variable names for polygon features
                 var pf_data = (typeof json_polygonfacilities !== 'undefined') ? json_polygonfacilities :
@@ -540,6 +544,7 @@
         }
         map.createPane('pane_collegecampus_2');
         map.getPane('pane_collegecampus_2').style.zIndex = 21;
+        map.getPane('pane_collegecampus_2').style.display = 'none';
         map.getPane('pane_collegecampus_2').style['mix-blend-mode'] = 'normal';
         var layer_collegecampus_2 = new L.geoJson(json_collegecampus_2, {
             attribution: '',
@@ -580,6 +585,7 @@
         }
         map.createPane('pane_siriba_3');
         map.getPane('pane_siriba_3').style.zIndex = 22;
+        map.getPane('pane_siriba_3').style.display = 'none';
         map.getPane('pane_siriba_3').style['mix-blend-mode'] = 'normal';
         var layer_siriba_3 = new L.geoJson(json_siriba_3, {
             attribution: '',
@@ -617,6 +623,7 @@
         }
         map.createPane('pane_niles_4');
         map.getPane('pane_niles_4').style.zIndex = 23;
+        map.getPane('pane_niles_4').style.display = 'none';
         map.getPane('pane_niles_4').style['mix-blend-mode'] = 'normal';
         var layer_niles_4 = new L.geoJson(json_niles_4, {
             attribution: '',
@@ -675,6 +682,7 @@
         }
         map.createPane('pane_grass_5');
         map.getPane('pane_grass_5').style.zIndex = 24;
+        map.getPane('pane_grass_5').style.display = 'none';
         map.getPane('pane_grass_5').style['mix-blend-mode'] = 'normal';
         var layer_grass_5 = new L.geoJson(json_grass_5, {
             attribution: '',
@@ -738,6 +746,7 @@
         }
         map.createPane('pane_coated_6');
         map.getPane('pane_coated_6').style.zIndex = 25;
+        map.getPane('pane_coated_6').style.display = 'none';
         map.getPane('pane_coated_6').style['mix-blend-mode'] = 'normal';
         var layer_coated_6 = new L.geoJson(json_coated_6, {
             attribution: '',
@@ -796,6 +805,7 @@
         }
         map.createPane('pane_farm_7');
         map.getPane('pane_farm_7').style.zIndex = 26;
+        map.getPane('pane_farm_7').style.display = 'none';
         map.getPane('pane_farm_7').style['mix-blend-mode'] = 'normal';
         var layer_farm_7 = new L.geoJson(json_farm_7, {
             attribution: '',
@@ -854,6 +864,7 @@
         }
         map.createPane('pane_field_8');
         map.getPane('pane_field_8').style.zIndex = 27;
+        map.getPane('pane_field_8').style.display = 'none';
         map.getPane('pane_field_8').style['mix-blend-mode'] = 'normal';
         var layer_field_8 = new L.geoJson(json_field_8, {
             attribution: '',
@@ -912,6 +923,7 @@
         }
         map.createPane('pane_flowers_9');
         map.getPane('pane_flowers_9').style.zIndex = 28;
+        map.getPane('pane_flowers_9').style.display = 'none';
         map.getPane('pane_flowers_9').style['mix-blend-mode'] = 'normal';
         var layer_flowers_9 = new L.geoJson(json_flowers_9, {
             attribution: '',
@@ -975,6 +987,7 @@
         }
         map.createPane('pane_amenity_10');
         map.getPane('pane_amenity_10').style.zIndex = 29;
+        map.getPane('pane_amenity_10').style.display = 'none';
         map.getPane('pane_amenity_10').style['mix-blend-mode'] = 'normal';
         var layer_amenity_10 = new L.geoJson(json_amenity_10, {
             attribution: '',
@@ -1038,6 +1051,7 @@
         }
         map.createPane('pane_buildings_11');
         map.getPane('pane_buildings_11').style.zIndex = 30;
+        map.getPane('pane_buildings_11').style.display = 'none';
         map.getPane('pane_buildings_11').style['mix-blend-mode'] = 'normal';
         var layer_buildings_11 = new L.geoJson(json_buildings_11, {
             attribution: '',
@@ -1096,6 +1110,7 @@
         }
         map.createPane('pane_trees_12');
         map.getPane('pane_trees_12').style.zIndex = 31;
+        map.getPane('pane_trees_12').style.display = 'none';
         map.getPane('pane_trees_12').style['mix-blend-mode'] = 'normal';
         var layer_trees_12 = new L.geoJson(json_trees_12, {
             attribution: '',
