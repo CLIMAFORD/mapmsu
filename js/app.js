@@ -10,96 +10,8 @@
     return result;
   }
   window.fetchBuildingImages = fetchBuildingImages;
-
-  // --- Supabase client + active-user tracking ---
-  const SUPABASE_URL = 'https://zjwxnbuitohuksljmwgo.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpqd3huYnVpdG9odWtzbGptd2dvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyNTM3NTcsImV4cCI6MjA4OTgyOTc1N30.ip8ZtV9bjTc_Abx8z8AIPp6gBcdMdHQN63TJs5jlPSQ';
-  const ACTIVE_USERS_TABLE = 'active_users';
-
-  let supabase = null;
-  async function loadSupabaseIfMissing(){
-    if(supabase) return supabase;
-    try{
-      if(!window.supabase){
-        await new Promise((res, rej)=>{ const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
-      }
-      if(window.supabase && typeof window.supabase.createClient === 'function'){
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      } else if(window.supabase && window.supabase.supabase){
-        supabase = window.supabase.supabase;
-      } else if(window.supabase){
-        supabase = window.supabase;
-      }
-      if(supabase) window.MSUMapApp = Object.assign(window.MSUMapApp||{}, { supabase });
-      return supabase;
-    }catch(e){ console.warn('Could not load supabase client', e); return null; }
-  }
-
-  // session id for this client
-  const sessionIdKey = 'msu_session_id';
-  let sessionId = localStorage.getItem(sessionIdKey);
-  if(!sessionId){ sessionId = 'client_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); localStorage.setItem(sessionIdKey, sessionId); }
-
-  // Upsert current location to Supabase active_users table
-  async function upsertActiveUser(pos){
-    try{
-      const s = await loadSupabaseIfMissing();
-      if(!s) return { error: new Error('Supabase client not available') };
-      if(!pos){ pos = await new Promise((res, rej)=>{ if(!navigator.geolocation) return rej(new Error('Geolocation not supported')); navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:false, timeout:15000 }); }); }
-      const lat = pos.coords.latitude, lon = pos.coords.longitude;
-      const row = { session_id: sessionId, lat, lon, last_seen: new Date().toISOString() };
-      const { data, error } = await supabase.from(ACTIVE_USERS_TABLE).upsert([row], { onConflict: 'session_id' });
-      return { data, error };
-    }catch(e){ return { error: e }; }
-  }
-
-  // Fetch recent active users and render heatmap
-  let serverHeatLayer = null;
-  async function refreshHeatmap(){
-    try{
-      const s = await loadSupabaseIfMissing();
-      if(!s) return;
-      // fetch users seen within last 10 minutes
-      const since = new Date(Date.now() - (1000 * 60 * 10)).toISOString();
-      const { data, error } = await supabase.from(ACTIVE_USERS_TABLE).select('session_id,lat,lon,last_seen').gte('last_seen', since);
-      if(error){ console.warn('refreshHeatmap query error', error); return; }
-      const pts = (data||[]).filter(r=>r && r.lat && r.lon).map(r=>[parseFloat(r.lat), parseFloat(r.lon), 0.6]);
-      if(serverHeatLayer){ try{ map.removeLayer(serverHeatLayer); }catch(e){} serverHeatLayer = null; }
-      if(pts.length) serverHeatLayer = L.heatLayer(pts, { radius: 25, blur: 15, maxZoom: 17 }).addTo(map);
-      const statusEl = document.getElementById('tool_heat_status'); if(statusEl) statusEl.textContent = `${pts.length} active users (server)`;
-    }catch(e){ console.warn('refreshHeatmap failed', e); }
-  }
-
-  // Tracking control
-  let activeTrackInterval = null;
-  async function startActiveTracking(){
-    try{
-      const consent = confirm('Allow Maseno University Map to record your approximate location to build a live heatmap? You can stop at any time.');
-      localStorage.setItem('msu_location_consent', consent ? '1' : '0');
-      if(!consent) return;
-      await loadSupabaseIfMissing();
-      // immediate upsert and heat refresh
-      await upsertActiveUser();
-      await refreshHeatmap();
-      // every 3 minutes
-      if(activeTrackInterval) clearInterval(activeTrackInterval);
-      activeTrackInterval = setInterval(async ()=>{ try{ await upsertActiveUser(); await refreshHeatmap(); }catch(e){ console.warn('active tracking interval error', e); } }, 180000);
-      document.getElementById('tool_heat_status').textContent = 'Active tracking enabled';
-    }catch(e){ console.warn('startActiveTracking error', e); document.getElementById('tool_heat_status').textContent = 'Tracking failed: '+(e.message||e); }
-  }
-
-  async function stopActiveTracking(){
-    try{
-      if(activeTrackInterval) clearInterval(activeTrackInterval); activeTrackInterval = null;
-      const s = await loadSupabaseIfMissing();
-      if(s){ try{ await supabase.from(ACTIVE_USERS_TABLE).delete().eq('session_id', sessionId); }catch(e){ console.warn('could not delete active user', e); } }
-      const statusEl = document.getElementById('tool_heat_status'); if(statusEl) statusEl.textContent = 'Tracking stopped';
-      if(serverHeatLayer) try{ map.removeLayer(serverHeatLayer); }catch(e){}
-    }catch(e){ console.warn('stopActiveTracking error', e); }
-  }
-
-  // Expose
-  window.MSUMapApp = { fetchBuildingImages, startActiveTracking, stopActiveTracking, refreshHeatmap, supabase };
+  // Expose a minimal MSUMapApp surface now; routing/reporting will be reimplemented fresh later.
+  window.MSUMapApp = { fetchBuildingImages };
 
   // --- Search wiring and implementation ---
   const searchBtn = document.getElementById('searchBtn');
@@ -287,7 +199,9 @@
   }
   window.fetchBuildingImages = fetchBuildingImages;
 
-  window.MSUMapApp = { supabase, startActiveTracking, stopActiveTracking, refreshHeatmap, fetchBuildingImages };
+  // Do not reference a local `supabase` variable here; the client is loaded lazily in app.fixed.js
+  // Merge safe exports into the global MSUMapApp without referencing potentially-undefined locals
+  window.MSUMapApp = Object.assign(window.MSUMapApp || {}, { fetchBuildingImages });
 
   // Highlight helpers
   function clearHighlights(){
@@ -384,62 +298,50 @@
     // map click selection
     try{ if(typeof map !== 'undefined' && map && map.on){ map.on('click', function(e){ if(!routingSelectMode) return; const latlng = e.latlng; if(!latlng) return; if(routingSelectMode === 'from'){ if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(latlng).addTo(map); const o = document.getElementById('dirOrigin'); if(o) o.value = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`; } else if(routingSelectMode === 'to'){ if(destMarker) try{ map.removeLayer(destMarker); }catch(e){} destMarker = L.marker(latlng).addTo(map); const d = document.getElementById('dirDest'); if(d) d.value = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`; } routingSelectMode = null; }); } }catch(e){ console.warn('map click routing attach failed', e); }
 
-    function attachDirUI(){
-      const fromMap = document.getElementById('dirFromMap'); if(fromMap) fromMap.addEventListener('click', ()=>{ routingSelectMode = 'from'; try{ alert('Click on the map to select origin'); }catch(e){} });
-      const toMap = document.getElementById('dirToMap'); if(toMap) toMap.addEventListener('click', ()=>{ routingSelectMode = 'to'; try{ alert('Click on the map to select destination'); }catch(e){} });
-      const useMy = document.getElementById('dirUseMyLocation'); if(useMy) useMy.addEventListener('click', async ()=>{ try{ const pos = await getCurrentPosition({enableHighAccuracy:true, timeout:10000}); const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude); if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(latlng).addTo(map); const o = document.getElementById('dirOrigin'); if(o) o.value = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`; try{ map.setView(latlng, 17); }catch(e){} }catch(err){ console.warn('geolocation failed', err); alert('Could not get location: '+(err.message||err)); } });
-      const routeBtn = document.getElementById('dirRoute'); if(routeBtn) routeBtn.addEventListener('click', async ()=>{
-        const o = document.getElementById('dirOrigin'); const d = document.getElementById('dirDest'); if(!o || !d) return; const a = parseLatLng(o.value); const b = parseLatLng(d.value); if(!a || !b){ alert('Please enter or select origin and destination (latitude, longitude)'); return; } if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(a).addTo(map); if(destMarker) try{ map.removeLayer(destMarker); }catch(e){} destMarker = L.marker(b).addTo(map); await routeBetween(a,b);
-      });
-      const clearBtn = document.getElementById('dirClear'); if(clearBtn) clearBtn.addEventListener('click', ()=>{ clearRoute(); });
-      const dirBtn = document.getElementById('directionsBtn'); if(dirBtn) dirBtn.addEventListener('click', (e)=>{ e.preventDefault(); openToolsPanel('directions'); });
-      const closeBtn = document.getElementById('closeDirections'); if(closeBtn) closeBtn.addEventListener('click', ()=>{ const panel = document.getElementById('msuDirections'); if(panel) panel.style.display = 'none'; });
-    }
+    // Directions UI removed — no-op placeholder
+    function attachDirUI(){ /* removed */ }
 
     // --- Tools panel: Issues/Search/Directions/Heatmap ---
     function openToolsPanel(tab){
-      const panel = document.getElementById('msuRightPanel'); if(!panel) return; panel.style.display = 'block';
-      switchToolsTab(tab || 'issues');
+      const panel = document.getElementById('msuToolsPanel'); if(!panel) return; panel.style.display = 'block';
+      switchToolsTab(tab || 'search');
     }
-    function closeToolsPanel(){ const panel = document.getElementById('msuRightPanel'); if(panel) panel.style.display = 'none'; }
+    function closeToolsPanel(){ const panel = document.getElementById('msuToolsPanel'); if(panel) panel.style.display = 'none'; }
 
     function switchToolsTab(tab){
-      const tabs = ['issues','search','directions','heat'];
+      const tabs = ['search','heat'];
       tabs.forEach(t=>{ const el = document.getElementById('tab'+capitalize(t)); if(el) el.classList.remove('active'); const pnl = document.getElementById('tab'+capitalize(t)+'Panel'); if(pnl) pnl.style.display = 'none'; });
       const activeBtn = document.getElementById('tab'+capitalize(tab)); if(activeBtn) activeBtn.classList.add('active'); const panel = document.getElementById('tab'+capitalize(tab)+'Panel'); if(panel) panel.style.display = 'block';
-      // special handling
-      if(tab === 'directions'){
-        // move existing msuDirections content into embeddedDirections if empty
-        const embed = document.getElementById('embeddedDirections'); const dir = document.getElementById('msuDirections');
-        if(embed && dir && embed.innerHTML.trim().length === 0){ embed.innerHTML = dir.innerHTML; }
-      }
     }
     function capitalize(s){ return s && String(s).charAt(0).toUpperCase()+String(s).slice(1); }
 
     // Wire tools controls
     function attachToolsUI(){
       const toolsClose = document.getElementById('toolsClose'); if(toolsClose) toolsClose.addEventListener('click', closeToolsPanel);
-      const ti = document.getElementById('tabIssues'); if(ti) ti.addEventListener('click', ()=>switchToolsTab('issues'));
+      // Actions panel toggle button: use class toggle for CSS-driven show/hide
+      const actionsBtn = document.getElementById('actionsBtn');
+      if(actionsBtn) actionsBtn.addEventListener('click', (e)=>{ e.preventDefault(); const p = document.getElementById('msuActionsPanel'); if(p) p.classList.toggle('open'); });
+      const actionsClose = document.getElementById('actionsClose'); if(actionsClose) actionsClose.addEventListener('click', ()=>{ const p = document.getElementById('msuActionsPanel'); if(p) p.classList.remove('open'); });
       const ts = document.getElementById('tabSearch'); if(ts) ts.addEventListener('click', ()=>switchToolsTab('search'));
-      const td = document.getElementById('tabDirections'); if(td) td.addEventListener('click', ()=>switchToolsTab('directions'));
       const th = document.getElementById('tabHeat'); if(th) th.addEventListener('click', ()=>switchToolsTab('heat'));
 
-      // Issues: submit stores locally (pending) and captures location
-      const issueSubmit = document.getElementById('tool_issue_submit'); if(issueSubmit) issueSubmit.addEventListener('click', async ()=>{
-        const desc = (document.getElementById('tool_issue_desc')||{}).value || '';
-        const photoEl = document.getElementById('tool_issue_photo');
-        const status = document.getElementById('tool_issue_status'); if(status) status.textContent = 'Capturing location...';
-        try{
-          const pos = await getCurrentPosition({enableHighAccuracy:true, timeout:10000});
-          const lat = pos.coords.latitude, lon = pos.coords.longitude;
-          let photoData = null;
-          if(photoEl && photoEl.files && photoEl.files.length){ const f = photoEl.files[0]; photoData = await fileToDataURL(f); }
-          const item = { id: 'local_'+Date.now(), description: desc, photo: photoData, lat, lon, ts: new Date().toISOString() };
-          const list = JSON.parse(localStorage.getItem('pending_issues')||'[]'); list.push(item); localStorage.setItem('pending_issues', JSON.stringify(list));
-          if(status) status.textContent = 'Saved locally. Will upload when reporting configured.';
-        }catch(err){ if(status) status.textContent = 'Could not capture location: '+(err.message||err); }
-      });
-      const issueLogLoc = document.getElementById('tool_issue_logloc'); if(issueLogLoc) issueLogLoc.addEventListener('click', async ()=>{ const status = document.getElementById('tool_issue_status'); try{ const pos = await getCurrentPosition({enableHighAccuracy:true, timeout:10000}); status.textContent = `Location: ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`; }catch(e){ status.textContent = 'Location failed: '+(e.message||e); } });
+      // Directions routing: OSRM
+      let routeLayer = null; let originMarker = null, destMarker = null; let routingSelectMode = null;
+      function parseLatLng(v){ if(!v) return null; const m = String(v).trim().match(/(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/); if(!m) return null; const a = parseFloat(m[1]), b = parseFloat(m[2]); if(!isFinite(a)||!isFinite(b)) return null; return L.latLng(a,b); }
+      async function routeBetween(a,b){ try{ if(!a||!b) return; const url = `https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson&steps=true`; const resp = await fetch(url); if(!resp.ok) throw new Error('Routing API error '+resp.status); const data = await resp.json(); if(!data || !data.routes || !data.routes.length) throw new Error('No route'); const r = data.routes[0]; if(routeLayer) try{ map.removeLayer(routeLayer); }catch(e){} routeLayer = L.geoJSON(r.geometry, { style:{ color:'#0b84ff', weight:5, opacity:0.9 } }).addTo(map); try{ if(routeLayer.getBounds && routeLayer.getBounds().isValid()) map.fitBounds(routeLayer.getBounds().pad(0.08)); }catch(e){} const summary = document.getElementById('dirSummary'); if(summary) summary.innerHTML = `<div><strong>Distance:</strong> ${Math.round(r.distance)} m — <strong>Duration:</strong> ${Math.round(r.duration)} s</div>`; const stepsEl = document.getElementById('dirSteps'); if(stepsEl){ stepsEl.innerHTML=''; (r.legs||[]).forEach(leg=>{ const ol = document.createElement('ol'); (leg.steps||[]).forEach(s=>{ const li = document.createElement('li'); li.style.marginBottom='6px'; const instr = (s.maneuver && (s.maneuver.instruction || s.maneuver.type)) || s.name || ''; li.innerText = `${Math.round(s.distance)} m — ${Math.round(s.duration)} s — ${instr}`; ol.appendChild(li); }); stepsEl.appendChild(ol); }); }
+      }catch(err){ console.warn('routeBetween error', err); const summary = document.getElementById('dirSummary'); if(summary) summary.innerText = 'Routing error: '+(err.message||err); }
+      }
+      // map click selection for routing
+      if(typeof map !== 'undefined' && map && map.on){ map.on('click', function(e){ if(!routingSelectMode) return; const latlng = e.latlng; if(!latlng) return; if(routingSelectMode === 'from'){ if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(latlng).addTo(map); const o = document.getElementById('dirOrigin'); if(o) o.value = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`; } else if(routingSelectMode === 'to'){ if(destMarker) try{ map.removeLayer(destMarker); }catch(e){} destMarker = L.marker(latlng).addTo(map); const d = document.getElementById('dirDest'); if(d) d.value = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`; } routingSelectMode = null; }); }
+
+      // wire directions controls
+      const fromMap = document.getElementById('dirFromMap'); if(fromMap) fromMap.addEventListener('click', ()=>{ routingSelectMode = 'from'; try{ alert('Click on the map to select origin'); }catch(e){} });
+      const toMap = document.getElementById('dirToMap'); if(toMap) toMap.addEventListener('click', ()=>{ routingSelectMode = 'to'; try{ alert('Click on the map to select destination'); }catch(e){} });
+      const useMy = document.getElementById('dirUseMyLocation'); if(useMy) useMy.addEventListener('click', async ()=>{ try{ const pos = await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{enableHighAccuracy:true,timeout:10000})); const latlng = L.latLng(pos.coords.latitude,pos.coords.longitude); if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(latlng).addTo(map); const o = document.getElementById('dirOrigin'); if(o) o.value = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`; try{ map.setView(latlng,17); }catch(e){} }catch(err){ alert('Could not get location: '+(err.message||err)); } });
+      const routeBtn = document.getElementById('dirRoute'); if(routeBtn) routeBtn.addEventListener('click', async ()=>{ const o = document.getElementById('dirOrigin'); const d = document.getElementById('dirDest'); if(!o||!d) return; const a = parseLatLng(o.value); const b = parseLatLng(d.value); if(!a||!b){ alert('Please enter or select origin and destination (lat, lon)'); return; } if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(a).addTo(map); if(destMarker) try{ map.removeLayer(destMarker); }catch(e){} destMarker = L.marker(b).addTo(map); await routeBetween(a,b); });
+      const clearBtn = document.getElementById('dirClear'); if(clearBtn) clearBtn.addEventListener('click', ()=>{ try{ if(routeLayer) map.removeLayer(routeLayer); if(originMarker) map.removeLayer(originMarker); if(destMarker) map.removeLayer(destMarker); document.getElementById('dirSummary').innerHTML=''; document.getElementById('dirSteps').innerHTML=''; }catch(e){} });
+
+      // Issues/reporting removed
 
       // Search: reuse main search logic
       const toolSearchInput = document.getElementById('tool_search_input'); const toolSearchBtn = document.getElementById('tool_search_btn'); if(toolSearchBtn && toolSearchInput) toolSearchBtn.addEventListener('click', ()=>{ document.getElementById('mapSearch').value = toolSearchInput.value; if(typeof doSearch === 'function') doSearch(); document.getElementById('tool_search_status').textContent = 'Search executed'; });
@@ -452,11 +354,10 @@
       async function logLocalLocation(){ try{ const pos = await getCurrentPosition({enableHighAccuracy:false, timeout:10000}); const entry = { lat: pos.coords.latitude, lon: pos.coords.longitude, ts: new Date().toISOString() }; const arr = JSON.parse(localStorage.getItem('local_locations')||'[]'); arr.push(entry); localStorage.setItem('local_locations', JSON.stringify(arr)); await renderLocalHeat(); document.getElementById('tool_heat_status').textContent = 'Location logged'; }catch(e){ document.getElementById('tool_heat_status').textContent = 'Log failed: '+(e.message||e); } }
       const elLog = document.getElementById('tool_log_location'); if(elLog) elLog.addEventListener('click', logLocalLocation);
       const elClear = document.getElementById('tool_clear_heat'); if(elClear) elClear.addEventListener('click', ()=>{ localStorage.removeItem('local_locations'); if(localHeatLayer) try{ map.removeLayer(localHeatLayer); }catch(e){} localHeatLayer = null; document.getElementById('tool_heat_status').textContent = 'Cleared'; });
-      const elStart = document.getElementById('tool_start_tracking'); if(elStart) elStart.addEventListener('click', ()=>{ if(localTrackInterval) return; logLocalLocation(); localTrackInterval = setInterval(logLocalLocation, 15000); document.getElementById('tool_heat_status').textContent = 'Tracking started'; try{ if(typeof startActiveTracking === 'function') startActiveTracking(); }catch(e){} });
-      const elStop = document.getElementById('tool_stop_tracking'); if(elStop) elStop.addEventListener('click', ()=>{ if(localTrackInterval) clearInterval(localTrackInterval); localTrackInterval = null; document.getElementById('tool_heat_status').textContent = 'Tracking stopped'; try{ if(typeof stopActiveTracking === 'function') stopActiveTracking(); }catch(e){} });
+      const elStart = document.getElementById('tool_start_tracking'); if(elStart) elStart.addEventListener('click', ()=>{ if(localTrackInterval) return; logLocalLocation(); localTrackInterval = setInterval(logLocalLocation, 15000); document.getElementById('tool_heat_status').textContent = 'Tracking started'; });
+      const elStop = document.getElementById('tool_stop_tracking'); if(elStop) elStop.addEventListener('click', ()=>{ if(localTrackInterval) clearInterval(localTrackInterval); localTrackInterval = null; document.getElementById('tool_heat_status').textContent = 'Tracking stopped'; });
 
-      // helper to convert file to data URL
-      function fileToDataURL(file){ return new Promise((res, rej)=>{ const r = new FileReader(); r.onload = ()=>res(r.result); r.onerror = rej; r.readAsDataURL(file); }); }
+      // helper removed
     }
 
     if(document.readyState === 'complete' || document.readyState === 'interactive') attachToolsUI(); else document.addEventListener('DOMContentLoaded', attachToolsUI);

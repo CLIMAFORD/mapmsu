@@ -51,6 +51,9 @@
         .campus-btn { background:#0b84ff; color:#fff; padding:6px 10px; border-radius:8px; text-decoration:none; display:inline-flex; align-items:center; gap:8px; }
         .campus-btn.ghost { background:transparent; border:1px solid rgba(255,255,255,0.08); }
         .campus-actions { display:flex; gap:8px; align-items:center; }
+        .msu-actions-panel { position: fixed; top: 64px; left: 0; bottom: 0; width: 320px; background: white; box-shadow: 2px 0 8px rgba(0,0,0,0.12); z-index: 125; padding: 12px; display: none; overflow:auto; }
+        .msu-actions-panel.open { display:block; }
+        .msu-actions-panel .close { position: absolute; right: 8px; top: 8px; background:#eee; border-radius:4px; padding:4px 8px; cursor:pointer; }
         </style>
         <title>Maseno University Facility Map</title>
         <!-- Tailwind via CDN -->
@@ -63,61 +66,21 @@
                 <div class="title">Maseno University Facility Map</div>
             </div>
                 <div class="center-controls">
-                <div id="searchBox" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.04);padding:6px;border-radius:8px;">
-                    <input id="mapSearch" placeholder="Search map (any attribute)" style="padding:6px 8px;border-radius:6px;background:transparent;border:none;color:#fff;min-width:160px;outline:none;" />
-                    <select id="searchMode" style="background:transparent;border:none;color:#fff;padding:6px;border-left:1px solid rgba(255,255,255,0.04);">
-                        <option value="any">Match Any</option>
-                        <option value="all">Match All</option>
-                    </select>
-                    <button id="searchBtn" class="campus-btn">Search</button>
-                    <button id="searchPrev" class="campus-btn ghost" title="Previous result">◀</button>
-                    <span id="searchCount" style="min-width:60px;text-align:center;color:#fff;">0 / 0</span>
-                    <button id="searchNext" class="campus-btn ghost" title="Next result">▶</button>
+                    <!-- Search moved to Actions panel -->
                 </div>
-                <span id="searchStatus" aria-live="polite" style="margin-left:8px;color:#f87171;font-size:0.9rem"></span>
-            </div>
             <div class="campus-actions">
                 <a id="mapBtn" class="campus-btn ghost" href="#/">Map</a>
-                <a href="#/report" class="campus-btn">Report Issue</a>
-                <a id="directionsBtn" href="#/directions" class="campus-btn">Directions</a>
+                <a id="actionsBtn" class="campus-btn ghost" href="#/actions">Actions</a>
             </div>
         </header>
         <div id="map" style="width: 100%; height: calc(100vh - 64px)">
         </div>
 
-        <!-- Controls -->
-        <div id="controls" class="fixed bottom-4 left-4 bg-white rounded p-3 shadow-md">
-            <label class="flex items-center space-x-2"><input id="heatToggle" type="checkbox" /> <span>Heatmap (active users)</span></label>
-        </div>
+        <!-- bottom controls removed; heat toggle moved to Actions panel -->
 
-                <!-- Directions panel -->
-                    <div id="msuDirections" class="msu-side-panel" style="right:unset;left:unset;bottom:unset;top:64px;right:0;width:380px;display:none;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                        <strong>Directions</strong>
-                        <button id="closeDirections" style="background:#eee;border-radius:4px;padding:4px 8px">Close</button>
-                    </div>
-                    <div style="margin-bottom:8px">
-                        <label style="font-weight:600">Origin</label>
-                        <input id="dirOrigin" placeholder="Click 'From map' or use my location" style="width:100%;padding:6px;margin-top:4px;border:1px solid #ddd;border-radius:4px" />
-                        <div style="display:flex;gap:6px;margin-top:6px">
-                            <button id="dirUseMyLocation" class="campus-btn ghost">Use my location</button>
-                            <button id="dirFromMap" class="campus-btn ghost">From map</button>
-                        </div>
-                    </div>
-                    <div style="margin-bottom:8px">
-                        <label style="font-weight:600">Destination</label>
-                        <input id="dirDest" placeholder="Click 'To map' or enter address" style="width:100%;padding:6px;margin-top:4px;border:1px solid #ddd;border-radius:4px" />
-                        <div style="display:flex;gap:6px;margin-top:6px">
-                            <button id="dirToMap" class="campus-btn ghost">To map</button>
-                            <button id="dirRoute" class="campus-btn">Route</button>
-                            <button id="dirClear" class="campus-btn ghost">Clear</button>
-                        </div>
-                    </div>
-                    <div id="dirSummary" style="font-size:13px;color:#333;margin-bottom:8px"></div>
-                    <div id="dirSteps" style="font-size:13px;color:#333;max-height:50vh;overflow:auto"></div>
-                </div>
+                <!-- Directions feature removed -->
                 <!-- Unified Tools panel (Issues / Search / Directions / Heatmap) -->
-                <div id="msuRightPanel" class="msu-side-panel" style="right:0;top:64px;width:420px;display:none;">
+                <div id="msuToolsPanel" class="msu-side-panel" style="right:0;top:64px;width:420px;display:none;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                         <strong id="toolsTitle">Tools</strong>
                         <div>
@@ -125,22 +88,11 @@
                         </div>
                     </div>
                     <div style="display:flex;gap:6px;margin-bottom:10px">
-                        <button class="campus-btn ghost" id="tabIssues">Issues</button>
                         <button class="campus-btn ghost" id="tabSearch">Search</button>
-                        <button class="campus-btn ghost" id="tabDirections">Directions</button>
                         <button class="campus-btn ghost" id="tabHeat">Heatmap</button>
                     </div>
                     <div id="toolsContent">
-                        <div id="tabIssuesPanel" style="display:none">
-                            <h4>Report Issue</h4>
-                            <label>Description<textarea id="tool_issue_desc" style="width:100%;height:80px;margin-top:6px"></textarea></label>
-                            <label style="display:block;margin-top:6px">Photo (optional)<input id="tool_issue_photo" type="file" accept="image/*" /></label>
-                            <div style="display:flex;gap:8px;margin-top:8px">
-                                <button id="tool_issue_submit" class="campus-btn">Submit</button>
-                                <button id="tool_issue_logloc" class="campus-btn ghost">Log my location</button>
-                            </div>
-                            <div id="tool_issue_status" style="margin-top:8px;font-size:13px;color:#333"></div>
-                        </div>
+                        <!-- Issues/reporting removed -->
                         <div id="tabSearchPanel" style="display:none">
                             <h4>Search Map</h4>
                             <input id="tool_search_input" placeholder="Search..." style="width:100%;padding:6px;margin-top:6px;border:1px solid #ddd;border-radius:4px" />
@@ -151,10 +103,7 @@
                             </div>
                             <div id="tool_search_status" style="margin-top:8px;font-size:13px;color:#333"></div>
                         </div>
-                        <div id="tabDirectionsPanel" style="display:none">
-                            <!-- reuse the controls already present in msuDirections for consistency -->
-                            <div id="embeddedDirections"></div>
-                        </div>
+                        <!-- Directions removed -->
                         <div id="tabHeatPanel" style="display:none">
                             <h4>Local Heatmap</h4>
                             <div style="display:flex;gap:8px;margin-top:6px">
@@ -165,6 +114,52 @@
                             </div>
                             <div id="tool_heat_status" style="margin-top:8px;font-size:13px;color:#333"></div>
                         </div>
+                    </div>
+                </div>
+                <!-- Actions panel: collapsible side panel with Search and Heatmap -->
+                <div id="msuActionsPanel" class="msu-actions-panel" style="right:unset;left:0;display:none;">
+                    <div class="close" id="actionsClose">Close</div>
+                    <h4 style="margin-top:0">Actions</h4>
+                    <div style="margin-top:8px">
+                        <label style="font-weight:600">Search Map</label>
+                        <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
+                            <input id="mapSearch" placeholder="Search map (any attribute)" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:4px" />
+                            <select id="searchMode" style="padding:6px;border:1px solid #ddd;border-radius:4px">
+                                <option value="any">Any</option>
+                                <option value="all">All</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;gap:6px;margin-top:8px">
+                            <button id="searchBtn" class="campus-btn">Search</button>
+                            <button id="searchPrev" class="campus-btn ghost">◀</button>
+                            <span id="searchCount" style="align-self:center">0 / 0</span>
+                            <button id="searchNext" class="campus-btn ghost">▶</button>
+                        </div>
+                        <div id="searchStatus" style="margin-top:6px;color:#333;font-size:13px"></div>
+                    </div>
+                    <hr style="margin:12px 0" />
+                    <div>
+                        <label style="display:flex;align-items:center;gap:8px"><input id="heatToggle" type="checkbox" /> <span>Heatmap (active users)</span></label>
+                        <div id="tool_heat_status" style="margin-top:8px;font-size:13px;color:#333"></div>
+                    </div>
+                    <hr style="margin:12px 0" />
+                    <div id="directionsSection">
+                        <h4>Directions</h4>
+                        <label style="font-weight:600">Origin</label>
+                        <input id="dirOrigin" placeholder="lat, lon or click 'From map'" style="width:100%;padding:6px;margin-top:4px;border:1px solid #ddd;border-radius:4px" />
+                        <div style="display:flex;gap:6px;margin-top:6px">
+                            <button id="dirFromMap" class="campus-btn ghost">From map</button>
+                            <button id="dirUseMyLocation" class="campus-btn ghost">Use my location</button>
+                        </div>
+                        <label style="font-weight:600;margin-top:8px">Destination</label>
+                        <input id="dirDest" placeholder="lat, lon or click 'To map'" style="width:100%;padding:6px;margin-top:4px;border:1px solid #ddd;border-radius:4px" />
+                        <div style="display:flex;gap:6px;margin-top:6px">
+                            <button id="dirToMap" class="campus-btn ghost">To map</button>
+                            <button id="dirRoute" class="campus-btn">Route</button>
+                            <button id="dirClear" class="campus-btn ghost">Clear</button>
+                        </div>
+                        <div id="dirSummary" style="font-size:13px;color:#333;margin-top:8px"></div>
+                        <div id="dirSteps" style="font-size:13px;color:#333;max-height:30vh;overflow:auto;margin-top:6px"></div>
                     </div>
                 </div>
         <script src="js/qgis2web_expressions.js"></script>
@@ -178,8 +173,7 @@
         <script src="js/labels.js"></script>
         <script src="js/leaflet.photon.js"></script>
         <script src="js/leaflet-heat.js"></script>
-        <!-- polygonfacilities data: prefer polygonfacilities.js, fall back to MSUPolygonFacilities_1.js -->
-        <script src="data/polygonfacilities.js"></script>
+        <!-- polygonfacilities data: fall back to MSUPolygonFacilities_1.js -->
         <script src="data/MSUPolygonFacilities_1.js"></script>
         <script src="data/collegecampus_2.js"></script>
         <script src="data/siriba_3.js"></script>
@@ -273,7 +267,7 @@
         map.createPane('pane_OSMStandard_0');
         map.getPane('pane_OSMStandard_0').style.zIndex = 10;
         // hide base tiles visually while keeping layer available for toggling
-        map.getPane('pane_OSMStandard_0').style.display = 'none';
+        // show base tiles
         var layer_OSMStandard_0 = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             pane: 'pane_OSMStandard_0',
             opacity: 1.0,
@@ -485,7 +479,7 @@
         map.createPane('pane_polygonfacilities');
         map.getPane('pane_polygonfacilities').style.zIndex = 20;
         // hide polygon features initially
-        map.getPane('pane_polygonfacilities').style.display = 'none';
+        // show polygon facilities
         map.getPane('pane_polygonfacilities').style['mix-blend-mode'] = 'normal';
                 // Try multiple possible data variable names for polygon features
                 var pf_data = (typeof json_polygonfacilities !== 'undefined') ? json_polygonfacilities :
@@ -544,7 +538,7 @@
         }
         map.createPane('pane_collegecampus_2');
         map.getPane('pane_collegecampus_2').style.zIndex = 21;
-        map.getPane('pane_collegecampus_2').style.display = 'none';
+        // show college campus layer
         map.getPane('pane_collegecampus_2').style['mix-blend-mode'] = 'normal';
         var layer_collegecampus_2 = new L.geoJson(json_collegecampus_2, {
             attribution: '',
@@ -585,7 +579,7 @@
         }
         map.createPane('pane_siriba_3');
         map.getPane('pane_siriba_3').style.zIndex = 22;
-        map.getPane('pane_siriba_3').style.display = 'none';
+        // show siriba layer
         map.getPane('pane_siriba_3').style['mix-blend-mode'] = 'normal';
         var layer_siriba_3 = new L.geoJson(json_siriba_3, {
             attribution: '',
@@ -623,7 +617,7 @@
         }
         map.createPane('pane_niles_4');
         map.getPane('pane_niles_4').style.zIndex = 23;
-        map.getPane('pane_niles_4').style.display = 'none';
+        // show niles layer
         map.getPane('pane_niles_4').style['mix-blend-mode'] = 'normal';
         var layer_niles_4 = new L.geoJson(json_niles_4, {
             attribution: '',
@@ -682,7 +676,7 @@
         }
         map.createPane('pane_grass_5');
         map.getPane('pane_grass_5').style.zIndex = 24;
-        map.getPane('pane_grass_5').style.display = 'none';
+        // show grass layer
         map.getPane('pane_grass_5').style['mix-blend-mode'] = 'normal';
         var layer_grass_5 = new L.geoJson(json_grass_5, {
             attribution: '',
@@ -746,7 +740,7 @@
         }
         map.createPane('pane_coated_6');
         map.getPane('pane_coated_6').style.zIndex = 25;
-        map.getPane('pane_coated_6').style.display = 'none';
+        // show coated layer
         map.getPane('pane_coated_6').style['mix-blend-mode'] = 'normal';
         var layer_coated_6 = new L.geoJson(json_coated_6, {
             attribution: '',
@@ -805,7 +799,7 @@
         }
         map.createPane('pane_farm_7');
         map.getPane('pane_farm_7').style.zIndex = 26;
-        map.getPane('pane_farm_7').style.display = 'none';
+        // show farm layer
         map.getPane('pane_farm_7').style['mix-blend-mode'] = 'normal';
         var layer_farm_7 = new L.geoJson(json_farm_7, {
             attribution: '',
@@ -864,7 +858,7 @@
         }
         map.createPane('pane_field_8');
         map.getPane('pane_field_8').style.zIndex = 27;
-        map.getPane('pane_field_8').style.display = 'none';
+        // show field layer
         map.getPane('pane_field_8').style['mix-blend-mode'] = 'normal';
         var layer_field_8 = new L.geoJson(json_field_8, {
             attribution: '',
@@ -923,7 +917,7 @@
         }
         map.createPane('pane_flowers_9');
         map.getPane('pane_flowers_9').style.zIndex = 28;
-        map.getPane('pane_flowers_9').style.display = 'none';
+        // show flowers layer
         map.getPane('pane_flowers_9').style['mix-blend-mode'] = 'normal';
         var layer_flowers_9 = new L.geoJson(json_flowers_9, {
             attribution: '',
@@ -987,7 +981,7 @@
         }
         map.createPane('pane_amenity_10');
         map.getPane('pane_amenity_10').style.zIndex = 29;
-        map.getPane('pane_amenity_10').style.display = 'none';
+        // show amenity layer
         map.getPane('pane_amenity_10').style['mix-blend-mode'] = 'normal';
         var layer_amenity_10 = new L.geoJson(json_amenity_10, {
             attribution: '',
@@ -1051,7 +1045,7 @@
         }
         map.createPane('pane_buildings_11');
         map.getPane('pane_buildings_11').style.zIndex = 30;
-        map.getPane('pane_buildings_11').style.display = 'none';
+        // show buildings layer
         map.getPane('pane_buildings_11').style['mix-blend-mode'] = 'normal';
         var layer_buildings_11 = new L.geoJson(json_buildings_11, {
             attribution: '',
@@ -1110,7 +1104,7 @@
         }
         map.createPane('pane_trees_12');
         map.getPane('pane_trees_12').style.zIndex = 31;
-        map.getPane('pane_trees_12').style.display = 'none';
+        // show trees layer
         map.getPane('pane_trees_12').style['mix-blend-mode'] = 'normal';
         var layer_trees_12 = new L.geoJson(json_trees_12, {
             attribution: '',
