@@ -53,6 +53,8 @@
         .campus-actions { display:flex; gap:8px; align-items:center; }
         .msu-actions-panel { position: fixed; top: 64px; left: 0; bottom: 0; width: 320px; background: white; box-shadow: 2px 0 8px rgba(0,0,0,0.12); z-index: 125; padding: 12px; display: none; overflow:auto; }
         .msu-actions-panel.open { display:block; }
+        /* Floating fallback: if panel fails to open normally, make it float above map */
+        .msu-actions-panel.floating { position: fixed !important; left: 12px !important; top: 80px !important; width: 360px !important; bottom: auto !important; max-height: 70vh !important; z-index: 99999 !important; display:block !important; box-shadow: 0 6px 24px rgba(0,0,0,0.24) !important; border-radius:8px; }
         .msu-actions-panel .close { position: absolute; right: 8px; top: 8px; background:#eee; border-radius:4px; padding:4px 8px; cursor:pointer; }
         </style>
         <title>Maseno University Facility Map</title>
