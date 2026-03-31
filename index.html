@@ -113,7 +113,8 @@
         <script src="data/amenity_10.js"></script>
         <script src="data/buildings_11.js"></script>
         <script src="data/trees_12.js"></script>
-        <script src="js/app.js"></script>
+        <!-- Load fixed app script to avoid stale/cached remote app.js duplication -->
+        <script src="js/app.fixed.js"></script>
         <script>
         var map = L.map('map', {
             zoomControl:false, maxZoom:28, minZoom:1
