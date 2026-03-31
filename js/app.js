@@ -10,8 +10,96 @@
     return result;
   }
   window.fetchBuildingImages = fetchBuildingImages;
-  // Expose a minimal MSUMapApp surface now; routing/reporting will be reimplemented fresh later.
-  window.MSUMapApp = { fetchBuildingImages };
+
+  // --- Supabase client + active-user tracking ---
+  const SUPABASE_URL = 'https://zjwxnbuitohuksljmwgo.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpqd3huYnVpdG9odWtzbGptd2dvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyNTM3NTcsImV4cCI6MjA4OTgyOTc1N30.ip8ZtV9bjTc_Abx8z8AIPp6gBcdMdHQN63TJs5jlPSQ';
+  const ACTIVE_USERS_TABLE = 'active_users';
+
+  let supabase = null;
+  async function loadSupabaseIfMissing(){
+    if(supabase) return supabase;
+    try{
+      if(!window.supabase){
+        await new Promise((res, rej)=>{ const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+      }
+      if(window.supabase && typeof window.supabase.createClient === 'function'){
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      } else if(window.supabase && window.supabase.supabase){
+        supabase = window.supabase.supabase;
+      } else if(window.supabase){
+        supabase = window.supabase;
+      }
+      if(supabase) window.MSUMapApp = Object.assign(window.MSUMapApp||{}, { supabase });
+      return supabase;
+    }catch(e){ console.warn('Could not load supabase client', e); return null; }
+  }
+
+  // session id for this client
+  const sessionIdKey = 'msu_session_id';
+  let sessionId = localStorage.getItem(sessionIdKey);
+  if(!sessionId){ sessionId = 'client_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); localStorage.setItem(sessionIdKey, sessionId); }
+
+  // Upsert current location to Supabase active_users table
+  async function upsertActiveUser(pos){
+    try{
+      const s = await loadSupabaseIfMissing();
+      if(!s) return { error: new Error('Supabase client not available') };
+      if(!pos){ pos = await new Promise((res, rej)=>{ if(!navigator.geolocation) return rej(new Error('Geolocation not supported')); navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:false, timeout:15000 }); }); }
+      const lat = pos.coords.latitude, lon = pos.coords.longitude;
+      const row = { session_id: sessionId, lat, lon, last_seen: new Date().toISOString() };
+      const { data, error } = await supabase.from(ACTIVE_USERS_TABLE).upsert([row], { onConflict: 'session_id' });
+      return { data, error };
+    }catch(e){ return { error: e }; }
+  }
+
+  // Fetch recent active users and render heatmap
+  let serverHeatLayer = null;
+  async function refreshHeatmap(){
+    try{
+      const s = await loadSupabaseIfMissing();
+      if(!s) return;
+      // fetch users seen within last 10 minutes
+      const since = new Date(Date.now() - (1000 * 60 * 10)).toISOString();
+      const { data, error } = await supabase.from(ACTIVE_USERS_TABLE).select('session_id,lat,lon,last_seen').gte('last_seen', since);
+      if(error){ console.warn('refreshHeatmap query error', error); return; }
+      const pts = (data||[]).filter(r=>r && r.lat && r.lon).map(r=>[parseFloat(r.lat), parseFloat(r.lon), 0.6]);
+      if(serverHeatLayer){ try{ map.removeLayer(serverHeatLayer); }catch(e){} serverHeatLayer = null; }
+      if(pts.length) serverHeatLayer = L.heatLayer(pts, { radius: 25, blur: 15, maxZoom: 17 }).addTo(map);
+      const statusEl = document.getElementById('tool_heat_status'); if(statusEl) statusEl.textContent = `${pts.length} active users (server)`;
+    }catch(e){ console.warn('refreshHeatmap failed', e); }
+  }
+
+  // Tracking control
+  let activeTrackInterval = null;
+  async function startActiveTracking(){
+    try{
+      const consent = confirm('Allow Maseno University Map to record your approximate location to build a live heatmap? You can stop at any time.');
+      localStorage.setItem('msu_location_consent', consent ? '1' : '0');
+      if(!consent) return;
+      await loadSupabaseIfMissing();
+      // immediate upsert and heat refresh
+      await upsertActiveUser();
+      await refreshHeatmap();
+      // every 3 minutes
+      if(activeTrackInterval) clearInterval(activeTrackInterval);
+      activeTrackInterval = setInterval(async ()=>{ try{ await upsertActiveUser(); await refreshHeatmap(); }catch(e){ console.warn('active tracking interval error', e); } }, 180000);
+      document.getElementById('tool_heat_status').textContent = 'Active tracking enabled';
+    }catch(e){ console.warn('startActiveTracking error', e); document.getElementById('tool_heat_status').textContent = 'Tracking failed: '+(e.message||e); }
+  }
+
+  async function stopActiveTracking(){
+    try{
+      if(activeTrackInterval) clearInterval(activeTrackInterval); activeTrackInterval = null;
+      const s = await loadSupabaseIfMissing();
+      if(s){ try{ await supabase.from(ACTIVE_USERS_TABLE).delete().eq('session_id', sessionId); }catch(e){ console.warn('could not delete active user', e); } }
+      const statusEl = document.getElementById('tool_heat_status'); if(statusEl) statusEl.textContent = 'Tracking stopped';
+      if(serverHeatLayer) try{ map.removeLayer(serverHeatLayer); }catch(e){}
+    }catch(e){ console.warn('stopActiveTracking error', e); }
+  }
+
+  // Expose
+  window.MSUMapApp = { fetchBuildingImages, startActiveTracking, stopActiveTracking, refreshHeatmap, supabase };
 
   // --- Search wiring and implementation ---
   const searchBtn = document.getElementById('searchBtn');
@@ -310,10 +398,10 @@
 
     // --- Tools panel: Issues/Search/Directions/Heatmap ---
     function openToolsPanel(tab){
-      const panel = document.getElementById('msuToolsPanel'); if(!panel) return; panel.style.display = 'block';
+      const panel = document.getElementById('msuRightPanel'); if(!panel) return; panel.style.display = 'block';
       switchToolsTab(tab || 'issues');
     }
-    function closeToolsPanel(){ const panel = document.getElementById('msuToolsPanel'); if(panel) panel.style.display = 'none'; }
+    function closeToolsPanel(){ const panel = document.getElementById('msuRightPanel'); if(panel) panel.style.display = 'none'; }
 
     function switchToolsTab(tab){
       const tabs = ['issues','search','directions','heat'];
@@ -364,8 +452,8 @@
       async function logLocalLocation(){ try{ const pos = await getCurrentPosition({enableHighAccuracy:false, timeout:10000}); const entry = { lat: pos.coords.latitude, lon: pos.coords.longitude, ts: new Date().toISOString() }; const arr = JSON.parse(localStorage.getItem('local_locations')||'[]'); arr.push(entry); localStorage.setItem('local_locations', JSON.stringify(arr)); await renderLocalHeat(); document.getElementById('tool_heat_status').textContent = 'Location logged'; }catch(e){ document.getElementById('tool_heat_status').textContent = 'Log failed: '+(e.message||e); } }
       const elLog = document.getElementById('tool_log_location'); if(elLog) elLog.addEventListener('click', logLocalLocation);
       const elClear = document.getElementById('tool_clear_heat'); if(elClear) elClear.addEventListener('click', ()=>{ localStorage.removeItem('local_locations'); if(localHeatLayer) try{ map.removeLayer(localHeatLayer); }catch(e){} localHeatLayer = null; document.getElementById('tool_heat_status').textContent = 'Cleared'; });
-      const elStart = document.getElementById('tool_start_tracking'); if(elStart) elStart.addEventListener('click', ()=>{ if(localTrackInterval) return; logLocalLocation(); localTrackInterval = setInterval(logLocalLocation, 15000); document.getElementById('tool_heat_status').textContent = 'Tracking started'; });
-      const elStop = document.getElementById('tool_stop_tracking'); if(elStop) elStop.addEventListener('click', ()=>{ if(localTrackInterval) clearInterval(localTrackInterval); localTrackInterval = null; document.getElementById('tool_heat_status').textContent = 'Tracking stopped'; });
+      const elStart = document.getElementById('tool_start_tracking'); if(elStart) elStart.addEventListener('click', ()=>{ if(localTrackInterval) return; logLocalLocation(); localTrackInterval = setInterval(logLocalLocation, 15000); document.getElementById('tool_heat_status').textContent = 'Tracking started'; try{ if(typeof startActiveTracking === 'function') startActiveTracking(); }catch(e){} });
+      const elStop = document.getElementById('tool_stop_tracking'); if(elStop) elStop.addEventListener('click', ()=>{ if(localTrackInterval) clearInterval(localTrackInterval); localTrackInterval = null; document.getElementById('tool_heat_status').textContent = 'Tracking stopped'; try{ if(typeof stopActiveTracking === 'function') stopActiveTracking(); }catch(e){} });
 
       // helper to convert file to data URL
       function fileToDataURL(file){ return new Promise((res, rej)=>{ const r = new FileReader(); r.onload = ()=>res(r.result); r.onerror = rej; r.readAsDataURL(file); }); }

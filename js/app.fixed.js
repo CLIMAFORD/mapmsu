@@ -31,6 +31,65 @@
     }catch(e){ console.warn('Could not load supabase JS', e); return null; }
   }
 
+  // session id for this client
+  const sessionIdKey = 'msu_session_id';
+  let sessionId = localStorage.getItem(sessionIdKey);
+  if(!sessionId){ sessionId = 'client_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); localStorage.setItem(sessionIdKey, sessionId); }
+
+  // Upsert current location to Supabase active_users table
+  async function upsertActiveUser(pos){
+    try{
+      const s = await loadSupabaseIfMissing();
+      if(!s) return { error: new Error('Supabase client not available') };
+      if(!pos){ pos = await new Promise((res, rej)=>{ if(!navigator.geolocation) return rej(new Error('Geolocation not supported')); navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:false, timeout:15000 }); }); }
+      const lat = pos.coords.latitude, lon = pos.coords.longitude;
+      const row = { session_id: sessionId, lat, lon, last_seen: new Date().toISOString() };
+      const { data, error } = await supabase.from(ACTIVE_USERS_TABLE).upsert([row], { onConflict: 'session_id' });
+      return { data, error };
+    }catch(e){ return { error: e }; }
+  }
+
+  // Fetch recent active users and render heatmap
+  let serverHeatLayer = null;
+  async function refreshHeatmap(){
+    try{
+      const s = await loadSupabaseIfMissing();
+      if(!s) return;
+      const since = new Date(Date.now() - (1000 * 60 * 10)).toISOString();
+      const { data, error } = await supabase.from(ACTIVE_USERS_TABLE).select('session_id,lat,lon,last_seen').gte('last_seen', since);
+      if(error){ console.warn('refreshHeatmap query error', error); return; }
+      const pts = (data||[]).filter(r=>r && r.lat && r.lon).map(r=>[parseFloat(r.lat), parseFloat(r.lon), 0.6]);
+      if(serverHeatLayer){ try{ map.removeLayer(serverHeatLayer); }catch(e){} serverHeatLayer = null; }
+      if(pts.length) serverHeatLayer = L.heatLayer(pts, { radius: 25, blur: 15, maxZoom: 17 }).addTo(map);
+      const statusEl = document.getElementById('tool_heat_status'); if(statusEl) statusEl.textContent = `${pts.length} active users (server)`;
+    }catch(e){ console.warn('refreshHeatmap failed', e); }
+  }
+
+  let activeTrackInterval = null;
+  async function startActiveTracking(){
+    try{
+      const consent = confirm('Allow Maseno University Map to record your approximate location to build a live heatmap? You can stop at any time.');
+      localStorage.setItem('msu_location_consent', consent ? '1' : '0');
+      if(!consent) return;
+      await loadSupabaseIfMissing();
+      await upsertActiveUser();
+      await refreshHeatmap();
+      if(activeTrackInterval) clearInterval(activeTrackInterval);
+      activeTrackInterval = setInterval(async ()=>{ try{ await upsertActiveUser(); await refreshHeatmap(); }catch(e){ console.warn('active tracking interval error', e); } }, 180000);
+      const statusEl = document.getElementById('tool_heat_status'); if(statusEl) statusEl.textContent = 'Active tracking enabled';
+    }catch(e){ console.warn('startActiveTracking error', e); const statusEl = document.getElementById('tool_heat_status'); if(statusEl) statusEl.textContent = 'Tracking failed'; }
+  }
+
+  async function stopActiveTracking(){
+    try{
+      if(activeTrackInterval) clearInterval(activeTrackInterval); activeTrackInterval = null;
+      const s = await loadSupabaseIfMissing();
+      if(s){ try{ await supabase.from(ACTIVE_USERS_TABLE).delete().eq('session_id', sessionId); }catch(e){ console.warn('could not delete active user', e); } }
+      const statusEl = document.getElementById('tool_heat_status'); if(statusEl) statusEl.textContent = 'Tracking stopped';
+      if(serverHeatLayer) try{ map.removeLayer(serverHeatLayer); }catch(e){}
+    }catch(e){ console.warn('stopActiveTracking error', e); }
+  }
+
   // Report UI
   let reportEl = null;
   function showReport(){
