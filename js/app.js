@@ -261,7 +261,45 @@
     if(matches.length === 0){
       if(searchInput){ searchInput.classList.add('border-red-500'); setTimeout(()=>searchInput.classList.remove('border-red-500'),1200); }
       if(statusEl){ statusEl.textContent = 'Could not find facility'; setTimeout(()=>{ if(statusEl) statusEl.textContent = ''; }, 3000); }
-      return;
+      // Try fallback: scan global json_* variables for matching features and map them back to leaflet layers
+      try{
+        console.debug('doSearch: trying global json_* fallback');
+        const qLower = q.toLowerCase();
+        const candidateNames = new Set();
+        for(const k in window){
+          if(!k.startsWith('json_')) continue;
+          const obj = window[k];
+          if(obj && obj.features && Array.isArray(obj.features)){
+            for(const f of obj.features){
+              try{
+                const props = f.properties || {};
+                const name = (props.Name || props.name || props.NAME || '').toString();
+                if(!name) continue;
+                if(name.toLowerCase().includes(qLower)) candidateNames.add(name);
+                else {
+                  // also search all string properties
+                  const all = Object.values(props).filter(v=>v!==null&&v!==undefined).map(v=>String(v).toLowerCase()).join(' ');
+                  if(all.indexOf(qLower) !== -1) candidateNames.add(name);
+                }
+              }catch(e){}
+            }
+          }
+        }
+        if(candidateNames.size){
+          const gjLayers = group.getLayers();
+          gjLayers.forEach(gj => {
+            if(!gj || typeof gj.getLayers !== 'function') return;
+            gj.getLayers().forEach(fl => {
+              try{
+                const props = (fl && fl.feature && fl.feature.properties) ? fl.feature.properties : {};
+                const name = (props.Name || props.name || props.NAME || '').toString();
+                if(name && candidateNames.has(name)) matches.push(fl);
+              }catch(e){}
+            });
+          });
+        }
+      }catch(e){ console.warn('fallback search error', e); }
+      if(matches.length === 0) return;
     }
     // populate navigation state and focus on first match
     _searchMatches = matches;
