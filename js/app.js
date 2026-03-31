@@ -13,40 +13,28 @@
 
   async function loadSupabaseIfMissing(){
     if(supabase) return supabase;
-    // try to load CDN fallback
+    // try to load CDN fallback and create client
     const cdn = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
     try{
-      await new Promise((res, rej)=>{
-        var s = document.createElement('script'); s.src = cdn; s.onload = res; s.onerror = rej; document.head.appendChild(s);
-      if(reportEl) return;
-      reportEl = document.createElement('div');
-      // Use inline styles so the modal is visible even without Tailwind
-      reportEl.style.position = 'fixed';
-      reportEl.style.left = '0'; reportEl.style.top = '0'; reportEl.style.right = '0'; reportEl.style.bottom = '0';
-      reportEl.style.background = 'rgba(0,0,0,0.5)';
-      reportEl.style.display = 'flex'; reportEl.style.alignItems = 'center'; reportEl.style.justifyContent = 'center';
-      reportEl.style.zIndex = '2000';
-      reportEl.innerHTML = `
-        <div style="width:100%;max-width:520px;background:#fff;border-radius:8px;padding:16px;box-shadow:0 6px 24px rgba(0,0,0,.2);">
-          <h2 style="margin:0 0 8px 0;font-size:18px;font-weight:600">Report Issue</h2>
-          <div style="margin-bottom:8px"><label style="display:block;font-weight:600;margin-bottom:4px">Description</label><textarea id="issueDesc" style="width:100%;height:90px;padding:8px;border:1px solid #ccc;border-radius:4px"></textarea></div>
-          <div style="margin-bottom:8px"><label style="display:block;font-weight:600;margin-bottom:4px">Photo (optional)</label><input id="issuePhoto" type="file" accept="image/*" /></div>
-          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button id="submitIssue" style="background:#0b84ff;color:#fff;padding:8px 12px;border-radius:6px;border:none">Submit</button><button id="closeIssue" style="padding:8px 12px;border-radius:6px;border:1px solid #ccc;background:#fff">Close</button></div>
-          <div id="issueStatus" style="margin-top:10px;color:#333;font-size:13px"></div>
-        </div>`;
-      document.body.appendChild(reportEl);
-      document.getElementById('closeIssue').addEventListener('click', ()=>{ location.hash = '#/'; });
-      const submitBtn = document.getElementById('submitIssue');
-      submitBtn.addEventListener('click', submitIssue);
-      // Try to lazily load/configure Supabase when opening the dialog so reporting can work
-      (async function(){
-        const statusEl = document.getElementById('issueStatus');
-        if(supabase){ if(statusEl) statusEl.textContent = ''; submitBtn.disabled = false; return; }
-        if(statusEl) statusEl.textContent = 'Initializing reporting client...';
-        const s = await loadSupabaseIfMissing();
-        if(s){ supabase = s; window.MSUMapApp = Object.assign(window.MSUMapApp||{}, { supabase }); if(statusEl) statusEl.textContent = ''; submitBtn.disabled = false; }
-        else { if(statusEl) statusEl.textContent = 'Reporting disabled: Supabase client not available. Add js/supabase.min.js or configure SUPABASE_* keys.'; submitBtn.disabled = true; }
-      })();
+      if(!window.supabase){
+        await new Promise((res, rej) => {
+          const s = document.createElement('script'); s.src = cdn; s.onload = res; s.onerror = rej; document.head.appendChild(s);
+        });
+      }
+      // create client if available
+      if(window.supabase && typeof window.supabase.createClient === 'function'){
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      } else if(window.supabase && window.supabase.supabase){
+        supabase = window.supabase.supabase;
+      } else if(window.supabase){
+        supabase = window.supabase;
+      }
+      if(supabase){
+        window.MSUMapApp = Object.assign(window.MSUMapApp || {}, { supabase });
+        try{ setupRealtimeSubscriptions(); }catch(e){}
+      }
+      return supabase;
+    }catch(e){ console.warn('Could not load supabase JS', e); return null; }
   }
 
   // Report UI
