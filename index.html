@@ -91,7 +91,7 @@
         </div>
 
                 <!-- Directions panel -->
-                <div id="msuDirections" class="msu-side-panel" style="right:unset;left:unset;bottom:unset;top:64px;right:0;width:380px;display:none;">
+                    <div id="msuDirections" class="msu-side-panel" style="right:unset;left:unset;bottom:unset;top:64px;right:0;width:380px;display:none;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                         <strong>Directions</strong>
                         <button id="closeDirections" style="background:#eee;border-radius:4px;padding:4px 8px">Close</button>
@@ -115,6 +115,57 @@
                     </div>
                     <div id="dirSummary" style="font-size:13px;color:#333;margin-bottom:8px"></div>
                     <div id="dirSteps" style="font-size:13px;color:#333;max-height:50vh;overflow:auto"></div>
+                </div>
+                <!-- Unified Tools panel (Issues / Search / Directions / Heatmap) -->
+                <div id="msuToolsPanel" class="msu-side-panel" style="right:0;top:64px;width:420px;display:none;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                        <strong id="toolsTitle">Tools</strong>
+                        <div>
+                            <button id="toolsClose" style="background:#eee;border-radius:4px;padding:4px 8px">Close</button>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:6px;margin-bottom:10px">
+                        <button class="campus-btn ghost" id="tabIssues">Issues</button>
+                        <button class="campus-btn ghost" id="tabSearch">Search</button>
+                        <button class="campus-btn ghost" id="tabDirections">Directions</button>
+                        <button class="campus-btn ghost" id="tabHeat">Heatmap</button>
+                    </div>
+                    <div id="toolsContent">
+                        <div id="tabIssuesPanel" style="display:none">
+                            <h4>Report Issue</h4>
+                            <label>Description<textarea id="tool_issue_desc" style="width:100%;height:80px;margin-top:6px"></textarea></label>
+                            <label style="display:block;margin-top:6px">Photo (optional)<input id="tool_issue_photo" type="file" accept="image/*" /></label>
+                            <div style="display:flex;gap:8px;margin-top:8px">
+                                <button id="tool_issue_submit" class="campus-btn">Submit</button>
+                                <button id="tool_issue_logloc" class="campus-btn ghost">Log my location</button>
+                            </div>
+                            <div id="tool_issue_status" style="margin-top:8px;font-size:13px;color:#333"></div>
+                        </div>
+                        <div id="tabSearchPanel" style="display:none">
+                            <h4>Search Map</h4>
+                            <input id="tool_search_input" placeholder="Search..." style="width:100%;padding:6px;margin-top:6px;border:1px solid #ddd;border-radius:4px" />
+                            <div style="display:flex;gap:6px;margin-top:8px">
+                                <button id="tool_search_btn" class="campus-btn">Search</button>
+                                <button id="tool_search_prev" class="campus-btn ghost">Prev</button>
+                                <button id="tool_search_next" class="campus-btn ghost">Next</button>
+                            </div>
+                            <div id="tool_search_status" style="margin-top:8px;font-size:13px;color:#333"></div>
+                        </div>
+                        <div id="tabDirectionsPanel" style="display:none">
+                            <!-- reuse the controls already present in msuDirections for consistency -->
+                            <div id="embeddedDirections"></div>
+                        </div>
+                        <div id="tabHeatPanel" style="display:none">
+                            <h4>Local Heatmap</h4>
+                            <div style="display:flex;gap:8px;margin-top:6px">
+                                <button id="tool_log_location" class="campus-btn ghost">Log my location</button>
+                                <button id="tool_start_tracking" class="campus-btn">Start tracking</button>
+                                <button id="tool_stop_tracking" class="campus-btn ghost">Stop</button>
+                                <button id="tool_clear_heat" class="campus-btn ghost">Clear</button>
+                            </div>
+                            <div id="tool_heat_status" style="margin-top:8px;font-size:13px;color:#333"></div>
+                        </div>
+                    </div>
                 </div>
         <script src="js/qgis2web_expressions.js"></script>
         <script src="js/leaflet.js"></script>

@@ -304,11 +304,74 @@
         const o = document.getElementById('dirOrigin'); const d = document.getElementById('dirDest'); if(!o || !d) return; const a = parseLatLng(o.value); const b = parseLatLng(d.value); if(!a || !b){ alert('Please enter or select origin and destination (latitude, longitude)'); return; } if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(a).addTo(map); if(destMarker) try{ map.removeLayer(destMarker); }catch(e){} destMarker = L.marker(b).addTo(map); await routeBetween(a,b);
       });
       const clearBtn = document.getElementById('dirClear'); if(clearBtn) clearBtn.addEventListener('click', ()=>{ clearRoute(); });
-      const dirBtn = document.getElementById('directionsBtn'); if(dirBtn) dirBtn.addEventListener('click', (e)=>{ e.preventDefault(); const panel = document.getElementById('msuDirections'); if(panel) panel.style.display = 'block'; });
+      const dirBtn = document.getElementById('directionsBtn'); if(dirBtn) dirBtn.addEventListener('click', (e)=>{ e.preventDefault(); openToolsPanel('directions'); });
       const closeBtn = document.getElementById('closeDirections'); if(closeBtn) closeBtn.addEventListener('click', ()=>{ const panel = document.getElementById('msuDirections'); if(panel) panel.style.display = 'none'; });
     }
 
-    if(document.readyState === 'complete' || document.readyState === 'interactive') attachDirUI(); else document.addEventListener('DOMContentLoaded', attachDirUI);
+    // --- Tools panel: Issues/Search/Directions/Heatmap ---
+    function openToolsPanel(tab){
+      const panel = document.getElementById('msuToolsPanel'); if(!panel) return; panel.style.display = 'block';
+      switchToolsTab(tab || 'issues');
+    }
+    function closeToolsPanel(){ const panel = document.getElementById('msuToolsPanel'); if(panel) panel.style.display = 'none'; }
+
+    function switchToolsTab(tab){
+      const tabs = ['issues','search','directions','heat'];
+      tabs.forEach(t=>{ const el = document.getElementById('tab'+capitalize(t)); if(el) el.classList.remove('active'); const pnl = document.getElementById('tab'+capitalize(t)+'Panel'); if(pnl) pnl.style.display = 'none'; });
+      const activeBtn = document.getElementById('tab'+capitalize(tab)); if(activeBtn) activeBtn.classList.add('active'); const panel = document.getElementById('tab'+capitalize(tab)+'Panel'); if(panel) panel.style.display = 'block';
+      // special handling
+      if(tab === 'directions'){
+        // move existing msuDirections content into embeddedDirections if empty
+        const embed = document.getElementById('embeddedDirections'); const dir = document.getElementById('msuDirections');
+        if(embed && dir && embed.innerHTML.trim().length === 0){ embed.innerHTML = dir.innerHTML; }
+      }
+    }
+    function capitalize(s){ return s && String(s).charAt(0).toUpperCase()+String(s).slice(1); }
+
+    // Wire tools controls
+    function attachToolsUI(){
+      const toolsClose = document.getElementById('toolsClose'); if(toolsClose) toolsClose.addEventListener('click', closeToolsPanel);
+      const ti = document.getElementById('tabIssues'); if(ti) ti.addEventListener('click', ()=>switchToolsTab('issues'));
+      const ts = document.getElementById('tabSearch'); if(ts) ts.addEventListener('click', ()=>switchToolsTab('search'));
+      const td = document.getElementById('tabDirections'); if(td) td.addEventListener('click', ()=>switchToolsTab('directions'));
+      const th = document.getElementById('tabHeat'); if(th) th.addEventListener('click', ()=>switchToolsTab('heat'));
+
+      // Issues: submit stores locally (pending) and captures location
+      const issueSubmit = document.getElementById('tool_issue_submit'); if(issueSubmit) issueSubmit.addEventListener('click', async ()=>{
+        const desc = (document.getElementById('tool_issue_desc')||{}).value || '';
+        const photoEl = document.getElementById('tool_issue_photo');
+        const status = document.getElementById('tool_issue_status'); if(status) status.textContent = 'Capturing location...';
+        try{
+          const pos = await getCurrentPosition({enableHighAccuracy:true, timeout:10000});
+          const lat = pos.coords.latitude, lon = pos.coords.longitude;
+          let photoData = null;
+          if(photoEl && photoEl.files && photoEl.files.length){ const f = photoEl.files[0]; photoData = await fileToDataURL(f); }
+          const item = { id: 'local_'+Date.now(), description: desc, photo: photoData, lat, lon, ts: new Date().toISOString() };
+          const list = JSON.parse(localStorage.getItem('pending_issues')||'[]'); list.push(item); localStorage.setItem('pending_issues', JSON.stringify(list));
+          if(status) status.textContent = 'Saved locally. Will upload when reporting configured.';
+        }catch(err){ if(status) status.textContent = 'Could not capture location: '+(err.message||err); }
+      });
+      const issueLogLoc = document.getElementById('tool_issue_logloc'); if(issueLogLoc) issueLogLoc.addEventListener('click', async ()=>{ const status = document.getElementById('tool_issue_status'); try{ const pos = await getCurrentPosition({enableHighAccuracy:true, timeout:10000}); status.textContent = `Location: ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`; }catch(e){ status.textContent = 'Location failed: '+(e.message||e); } });
+
+      // Search: reuse main search logic
+      const toolSearchInput = document.getElementById('tool_search_input'); const toolSearchBtn = document.getElementById('tool_search_btn'); if(toolSearchBtn && toolSearchInput) toolSearchBtn.addEventListener('click', ()=>{ document.getElementById('mapSearch').value = toolSearchInput.value; if(typeof doSearch === 'function') doSearch(); document.getElementById('tool_search_status').textContent = 'Search executed'; });
+      const toolPrev = document.getElementById('tool_search_prev'); if(toolPrev) toolPrev.addEventListener('click', ()=>{ const b = document.getElementById('searchPrev'); if(b) b.click(); });
+      const toolNext = document.getElementById('tool_search_next'); if(toolNext) toolNext.addEventListener('click', ()=>{ const b = document.getElementById('searchNext'); if(b) b.click(); });
+
+      // Heatmap: local storage of logged locations and rendering
+      let localHeatLayer = null; let localTrackInterval = null;
+      async function renderLocalHeat(){ try{ const entries = JSON.parse(localStorage.getItem('local_locations')||'[]'); const points = (entries||[]).map(e=>[e.lat, e.lon, 0.6]); if(localHeatLayer){ try{ map.removeLayer(localHeatLayer); }catch(e){} localHeatLayer = null; } if(points.length) localHeatLayer = L.heatLayer(points, {radius: 25, blur: 15, maxZoom: 17}).addTo(map); document.getElementById('tool_heat_status').textContent = `${points.length} local points`; }catch(e){ console.warn(e); } }
+      async function logLocalLocation(){ try{ const pos = await getCurrentPosition({enableHighAccuracy:false, timeout:10000}); const entry = { lat: pos.coords.latitude, lon: pos.coords.longitude, ts: new Date().toISOString() }; const arr = JSON.parse(localStorage.getItem('local_locations')||'[]'); arr.push(entry); localStorage.setItem('local_locations', JSON.stringify(arr)); await renderLocalHeat(); document.getElementById('tool_heat_status').textContent = 'Location logged'; }catch(e){ document.getElementById('tool_heat_status').textContent = 'Log failed: '+(e.message||e); } }
+      const elLog = document.getElementById('tool_log_location'); if(elLog) elLog.addEventListener('click', logLocalLocation);
+      const elClear = document.getElementById('tool_clear_heat'); if(elClear) elClear.addEventListener('click', ()=>{ localStorage.removeItem('local_locations'); if(localHeatLayer) try{ map.removeLayer(localHeatLayer); }catch(e){} localHeatLayer = null; document.getElementById('tool_heat_status').textContent = 'Cleared'; });
+      const elStart = document.getElementById('tool_start_tracking'); if(elStart) elStart.addEventListener('click', ()=>{ if(localTrackInterval) return; logLocalLocation(); localTrackInterval = setInterval(logLocalLocation, 15000); document.getElementById('tool_heat_status').textContent = 'Tracking started'; });
+      const elStop = document.getElementById('tool_stop_tracking'); if(elStop) elStop.addEventListener('click', ()=>{ if(localTrackInterval) clearInterval(localTrackInterval); localTrackInterval = null; document.getElementById('tool_heat_status').textContent = 'Tracking stopped'; });
+
+      // helper to convert file to data URL
+      function fileToDataURL(file){ return new Promise((res, rej)=>{ const r = new FileReader(); r.onload = ()=>res(r.result); r.onerror = rej; r.readAsDataURL(file); }); }
+    }
+
+    if(document.readyState === 'complete' || document.readyState === 'interactive') attachToolsUI(); else document.addEventListener('DOMContentLoaded', attachToolsUI);
   })();
 
 })();
