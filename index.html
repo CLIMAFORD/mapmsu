@@ -62,14 +62,17 @@
             <div style="display:flex;align-items:center;gap:12px;">
                 <div class="title">Maseno University Facility Map</div>
             </div>
-            <div class="center-controls">
-                <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.04);padding:6px;border-radius:8px;">
-                    <input id="mapSearch" placeholder="Search map (any attribute)" style="padding:6px 8px;border-radius:6px;background:transparent;border:none;color:#fff;min-width:260px;outline:none;" />
+                <div class="center-controls">
+                <div id="searchBox" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.04);padding:6px;border-radius:8px;">
+                    <input id="mapSearch" placeholder="Search map (any attribute)" style="padding:6px 8px;border-radius:6px;background:transparent;border:none;color:#fff;min-width:160px;outline:none;" />
                     <select id="searchMode" style="background:transparent;border:none;color:#fff;padding:6px;border-left:1px solid rgba(255,255,255,0.04);">
                         <option value="any">Match Any</option>
                         <option value="all">Match All</option>
                     </select>
                     <button id="searchBtn" class="campus-btn">Search</button>
+                    <button id="searchPrev" class="campus-btn ghost" title="Previous result">◀</button>
+                    <span id="searchCount" style="min-width:60px;text-align:center;color:#fff;">0 / 0</span>
+                    <button id="searchNext" class="campus-btn ghost" title="Next result">▶</button>
                 </div>
                 <span id="searchStatus" aria-live="polite" style="margin-left:8px;color:#f87171;font-size:0.9rem"></span>
             </div>
@@ -469,27 +472,6 @@
         });
         bounds_group.addLayer(layer_collegecampus_2);
         map.addLayer(layer_collegecampus_2);
-        
-                // After all qgis2web layers are added, ensure they are visible and preserve QGIS styling as much as possible.
-                (function ensureQgisLayersVisible(){
-                    try{
-                        if(window.bounds_group && typeof window.bounds_group.getLayers === 'function'){
-                            window.bounds_group.getLayers().forEach(function(gj){
-                                // gj is usually a GeoJSON layer (featureGroup); ensure each feature has a visible style
-                                if(gj && gj.eachLayer){
-                                    gj.eachLayer(function(layer){
-                                        if(layer && layer.setStyle){
-                                            // apply a modest default that still respects existing style where possible
-                                            try{ layer.setStyle(Object.assign({ fillOpacity: 0.6, weight: 1, color: '#222', opacity: 1 }, layer.options || {})); }catch(e){}
-                                        }
-                                    });
-                                    try{ if(gj.bringToFront) gj.bringToFront(); }catch(e){}
-                                }
-                            });
-                        }
-                        console.info('QGIS layers visibility ensured');
-                    }catch(e){ console.warn('ensureQgisLayersVisible failed', e); }
-                })();
         function pop_siriba_3(feature, layer) {
             var popupContent = '<table>\
                     <tr>\
