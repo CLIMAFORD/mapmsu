@@ -1,176 +1,17 @@
-// App: Supabase integration, routing, report UI, heatmap
+// App: routing and reporting functions have been removed for refactor
 (function(){
-  // --- Configuration (replace values injected from server) ---
-  const SUPABASE_URL = 'https://zjwxnbuitohuksljmwgo.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpqd3huYnVpdG9odWtzbGptd2dvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyNTM3NTcsImV4cCI6MjA4OTgyOTc1N30.ip8ZtV9bjTc_Abx8z8AIPp6gBcdMdHQN63TJs5jlPSQ';
-// Open the right-side panel and populate with photos
-  const ISSUE_BUCKET = 'issue-photos';
-  const ACTIVE_USERS_TABLE = 'active_users';
-  const ISSUES_TABLE = 'issues';
-
-  // Initialize Supabase client (deferred). We'll attempt to use any UMD `window.supabase` if present, otherwise lazy-load.
-  let supabase = null;
-
-  async function loadSupabaseIfMissing(){
-    if(supabase) return supabase;
-    // try to load CDN fallback and create client
-    const cdn = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
-    try{
-      if(!window.supabase){
-        await new Promise((res, rej) => {
-          const s = document.createElement('script'); s.src = cdn; s.onload = res; s.onerror = rej; document.head.appendChild(s);
-        });
-      }
-      // create client if available
-      if(window.supabase && typeof window.supabase.createClient === 'function'){
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      } else if(window.supabase && window.supabase.supabase){
-        supabase = window.supabase.supabase;
-      } else if(window.supabase){
-        supabase = window.supabase;
-      }
-      if(supabase){
-        window.MSUMapApp = Object.assign(window.MSUMapApp || {}, { supabase });
-        try{ setupRealtimeSubscriptions(); }catch(e){}
-      }
-      return supabase;
-    }catch(e){ console.warn('Could not load supabase JS', e); return null; }
+  // Simplified image fetcher — use feature properties only (Supabase/reporting removed).
+  async function fetchBuildingImages(feature){
+    const result = { interior: null, exterior: null };
+    if(!feature || !feature.properties) return result;
+    const props = feature.properties || {};
+    result.interior = props.interior_image || props.interior || props.Interior || props.Photo || props.photo || null;
+    result.exterior = props.exterior_image || props.exterior || props.Exterior || props.Photo || props.photo || null;
+    return result;
   }
-
-  // Report UI
-  let reportEl = null;
-  function showReport(){
-    if(reportEl) return;
-    reportEl = document.createElement('div');
-    reportEl.className = 'fixed inset-0 bg-black/50 flex items-center justify-center p-4';
-    reportEl.innerHTML = `
-      <div class="w-full max-w-md bg-white rounded p-4">
-        <h2 class="text-lg font-semibold mb-2">Report Issue</h2>
-        <label class="block mb-2">Description<textarea id="issueDesc" class="w-full border p-2"></textarea></label>
-        <label class="block mb-2">Photo (optional)<input id="issuePhoto" type="file" accept="image/*" capture="environment" /></label>
-        <div class="flex justify-between items-center">
-          <button id="submitIssue" class="bg-emerald-600 text-white px-4 py-2 rounded">Submit</button>
-          <button id="closeIssue" class="px-4 py-2 rounded">Close</button>
-        </div>
-        <div id="issueStatus" class="mt-2 text-sm text-gray-600"></div>
-      </div>`;
-    document.body.appendChild(reportEl);
-    document.getElementById('closeIssue').addEventListener('click', ()=>{ location.hash = '#/'; });
-    const submitBtn = document.getElementById('submitIssue');
-    submitBtn.addEventListener('click', submitIssue);
-    // Try to lazily load/configure Supabase when opening the dialog so reporting can work
-    (async function(){
-      const statusEl = document.getElementById('issueStatus');
-      if(supabase){ if(statusEl) statusEl.textContent = ''; submitBtn.disabled = false; return; }
-      if(statusEl) statusEl.textContent = 'Initializing reporting client...';
-      const s = await loadSupabaseIfMissing();
-      if(s){ supabase = s; window.MSUMapApp = Object.assign(window.MSUMapApp||{}, { supabase }); if(statusEl) statusEl.textContent = ''; submitBtn.disabled = false; }
-      else { if(statusEl) statusEl.textContent = 'Reporting disabled: Supabase client not available. Add js/supabase.min.js or configure SUPABASE_* keys.'; submitBtn.disabled = true; }
-    })();
-  }
-  function hideReport(){ if(reportEl){ reportEl.remove(); reportEl = null; } }
-
-  async function submitIssue(){
-    const status = document.getElementById('issueStatus');
-    if(!supabase){ if(status) status.textContent = 'Reporting unavailable: server client not configured.'; return; }
-    status.textContent = 'Getting location...';
-    try{
-      const pos = await getCurrentPosition({enableHighAccuracy:true, timeout:10000});
-      const lat = pos.coords.latitude, lon = pos.coords.longitude;
-      status.textContent = 'Uploading photo (if any)...';
-      const fileInput = document.getElementById('issuePhoto');
-      let image_path = null, public_url = null;
-      if(fileInput && fileInput.files && fileInput.files.length){
-        const file = fileInput.files[0];
-        const filename = `${Date.now()}_${Math.random().toString(36).slice(2,8)}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'')}`;
-        const { data: uploadData, error: uploadError } = await supabase.storage.from(ISSUE_BUCKET).upload(filename, file, { upsert: false });
-        if(uploadError){ console.error(uploadError); status.textContent = 'Photo upload failed: ' + uploadError.message; }
-        else { image_path = uploadData?.path; public_url = supabase.storage.from(ISSUE_BUCKET).getPublicUrl(image_path).data.publicUrl; }
-      }
-      status.textContent = 'Saving issue...';
-      const description = document.getElementById('issueDesc').value || null;
-      const insertObj = { description, image_path, image_url: public_url, lat, lon, session_id: sessionId };
-      const { data, error } = await supabase.from(ISSUES_TABLE).insert([insertObj]);
-      if(error){ console.error(error); status.textContent = 'Save failed: ' + error.message; }
-      else { status.textContent = 'Issue reported. Thank you.'; setTimeout(()=>{ location.hash = '#/'; }, 1200); }
-    }catch(err){ console.error(err); status.textContent = 'Error: ' + err.message; }
-  }
-
-  function getCurrentPosition(options){
-    return new Promise((resolve, reject)=>{
-      if(!navigator.geolocation) return reject(new Error('Geolocation not supported'));
-      navigator.geolocation.getCurrentPosition(resolve, reject, options);
-    });
-  }
-
-  // Active users tracking
-  let activeTracking = false;
-  let activeInterval = null;
-  async function startActiveTracking(){
-    if(activeTracking) return; activeTracking = true;
-    // ensure supabase is available before attempting to upsert/fetch
-    await loadSupabaseIfMissing();
-    if(!supabase){ console.warn('Active-tracking disabled: Supabase client not available'); return; }
-    await sendCurrentLocation();
-    activeInterval = setInterval(sendCurrentLocation, 15000);
-  }
-  function stopActiveTracking(){ if(activeInterval) clearInterval(activeInterval); activeTracking = false; }
-
-  async function sendCurrentLocation(){
-    try{
-      if(!supabase) return; // don't attempt DB ops when client isn't available
-      const pos = await getCurrentPosition({enableHighAccuracy:false, timeout:10000});
-      const lat = pos.coords.latitude, lon = pos.coords.longitude;
-      const obj = { session_id: sessionId, lat, lon, last_seen: new Date().toISOString() };
-      await supabase.from(ACTIVE_USERS_TABLE).upsert([obj], { onConflict: 'session_id' });
-    }catch(e){ /* ignore location errors */ }
-  }
-
-  // Heatmap layer
-  let heatLayer = null;
-  async function refreshHeatmap(){
-    try{
-      await loadSupabaseIfMissing();
-      if(!supabase){ console.warn('Heatmap disabled: Supabase client not available'); return; }
-      const { data, error } = await supabase.from(ACTIVE_USERS_TABLE).select('lat,lon').gte('last_seen', new Date(Date.now()-1000*60*10).toISOString());
-      if(error){ console.error('heat fetch', error); return; }
-      const points = (data || []).map(d => [d.lat, d.lon, 0.5]);
-      if(heatLayer){ map.removeLayer(heatLayer); heatLayer = null; }
-      if(points.length){ heatLayer = L.heatLayer(points, {radius: 25, blur: 15, maxZoom: 17}).addTo(map); }
-    }catch(e){ console.error(e); }
-  }
-
-  // Realtime subscription setup moved to function so it can be invoked after supabase is loaded
-  function setupRealtimeSubscriptions(){
-    try{
-      if(!(supabase && supabase.channel)) return;
-      // Listen for new issues
-      supabase.channel('public:issues')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: ISSUES_TABLE }, (payload) => {
-          console.log('Realtime: new issue', payload);
-          const status = document.getElementById('issueStatus');
-          if(status) status.textContent = 'New issue received (realtime)';
-        })
-        .subscribe();
-
-      // Listen for active_users changes to refresh heatmap
-      supabase.channel('public:active_users')
-        .on('postgres_changes', { event: '*', schema: 'public', table: ACTIVE_USERS_TABLE }, (payload) => {
-          if(window._msu_heat_timeout) clearTimeout(window._msu_heat_timeout);
-          window._msu_heat_timeout = setTimeout(()=>{ refreshHeatmap(); }, 500);
-        })
-        .subscribe();
-    }catch(e){ console.warn('Realtime subscription setup failed', e); }
-  }
-  // If supabase was already available at load time, set up subscriptions now
-  try{ if(supabase) setupRealtimeSubscriptions(); }catch(e){}
-
-  // Hook heat toggle
-  const heatToggle = document.getElementById('heatToggle');
-  if(heatToggle){ heatToggle.addEventListener('change', async (e)=>{
-    if(e.target.checked){ await startActiveTracking(); await refreshHeatmap(); window.heatInterval = setInterval(refreshHeatmap, 10000); }
-    else { stopActiveTracking(); if(window.heatInterval) clearInterval(window.heatInterval); if(heatLayer) { map.removeLayer(heatLayer); heatLayer = null; } }
-  }); }
+  window.fetchBuildingImages = fetchBuildingImages;
+  // Expose a minimal MSUMapApp surface now; routing/reporting will be reimplemented fresh later.
+  window.MSUMapApp = { fetchBuildingImages };
 
   // --- Search wiring and implementation ---
   const searchBtn = document.getElementById('searchBtn');
@@ -396,5 +237,7 @@
   }
 
   window.MSUMapApp = Object.assign(window.MSUMapApp || {}, { clearHighlights, openSidePanel, closeSidePanel });
+
+  
 
 })();
