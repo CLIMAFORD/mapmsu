@@ -79,6 +79,7 @@
             <div class="campus-actions">
                 <a id="mapBtn" class="campus-btn ghost" href="#/">Map</a>
                 <a href="#/report" class="campus-btn">Report Issue</a>
+                <a id="directionsBtn" href="#/directions" class="campus-btn">Directions</a>
             </div>
         </header>
         <div id="map" style="width: 100%; height: calc(100vh - 64px)">
@@ -88,6 +89,33 @@
         <div id="controls" class="fixed bottom-4 left-4 bg-white rounded p-3 shadow-md">
             <label class="flex items-center space-x-2"><input id="heatToggle" type="checkbox" /> <span>Heatmap (active users)</span></label>
         </div>
+
+                <!-- Directions panel -->
+                <div id="msuDirections" class="msu-side-panel" style="right:unset;left:unset;bottom:unset;top:64px;right:0;width:380px;display:none;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                        <strong>Directions</strong>
+                        <button id="closeDirections" style="background:#eee;border-radius:4px;padding:4px 8px">Close</button>
+                    </div>
+                    <div style="margin-bottom:8px">
+                        <label style="font-weight:600">Origin</label>
+                        <input id="dirOrigin" placeholder="Click 'From map' or use my location" style="width:100%;padding:6px;margin-top:4px;border:1px solid #ddd;border-radius:4px" />
+                        <div style="display:flex;gap:6px;margin-top:6px">
+                            <button id="dirUseMyLocation" class="campus-btn ghost">Use my location</button>
+                            <button id="dirFromMap" class="campus-btn ghost">From map</button>
+                        </div>
+                    </div>
+                    <div style="margin-bottom:8px">
+                        <label style="font-weight:600">Destination</label>
+                        <input id="dirDest" placeholder="Click 'To map' or enter address" style="width:100%;padding:6px;margin-top:4px;border:1px solid #ddd;border-radius:4px" />
+                        <div style="display:flex;gap:6px;margin-top:6px">
+                            <button id="dirToMap" class="campus-btn ghost">To map</button>
+                            <button id="dirRoute" class="campus-btn">Route</button>
+                            <button id="dirClear" class="campus-btn ghost">Clear</button>
+                        </div>
+                    </div>
+                    <div id="dirSummary" style="font-size:13px;color:#333;margin-bottom:8px"></div>
+                    <div id="dirSteps" style="font-size:13px;color:#333;max-height:50vh;overflow:auto"></div>
+                </div>
         <script src="js/qgis2web_expressions.js"></script>
         <script src="js/leaflet.js"></script>
         <script src="js/leaflet.rotatedMarker.js"></script>
