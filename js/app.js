@@ -304,6 +304,8 @@
         const o = document.getElementById('dirOrigin'); const d = document.getElementById('dirDest'); if(!o || !d) return; const a = parseLatLng(o.value); const b = parseLatLng(d.value); if(!a || !b){ alert('Please enter or select origin and destination (latitude, longitude)'); return; } if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(a).addTo(map); if(destMarker) try{ map.removeLayer(destMarker); }catch(e){} destMarker = L.marker(b).addTo(map); await routeBetween(a,b);
       });
       const clearBtn = document.getElementById('dirClear'); if(clearBtn) clearBtn.addEventListener('click', ()=>{ clearRoute(); });
+      const dirBtn = document.getElementById('directionsBtn'); if(dirBtn) dirBtn.addEventListener('click', (e)=>{ e.preventDefault(); const panel = document.getElementById('msuDirections'); if(panel) panel.style.display = 'block'; });
+      const closeBtn = document.getElementById('closeDirections'); if(closeBtn) closeBtn.addEventListener('click', ()=>{ const panel = document.getElementById('msuDirections'); if(panel) panel.style.display = 'none'; });
     }
 
     if(document.readyState === 'complete' || document.readyState === 'interactive') attachDirUI(); else document.addEventListener('DOMContentLoaded', attachDirUI);
