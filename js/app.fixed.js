@@ -34,6 +34,9 @@
   // Reporting UI and submit removed
 
   function getCurrentPosition(options){
+    // Only allow programmatic geolocation when caller explicitly requests it via options.force
+    options = options || {};
+    if(!options.force && !window.MSU_ALLOW_GEO){ return Promise.reject(new Error('Geolocation not allowed outside user gesture')); }
     return new Promise((resolve, reject)=>{ if(!navigator.geolocation) return reject(new Error('Geolocation not supported')); navigator.geolocation.getCurrentPosition(resolve, reject, options); });
   }
 
@@ -105,8 +108,8 @@
                 if(navigator.permissions && navigator.permissions.query){
                   try{ const p = await navigator.permissions.query({ name: 'geolocation' }); if(p.state === 'denied'){ alert('Location permission is denied for this site. Please enable location permissions in your browser.'); e.target.checked = false; return; } }catch(err){}
                 }
-                // Directly request current position to trigger browser prompt
-                await new Promise((res, rej)=>{ if(!navigator.geolocation) return rej(new Error('Geolocation not supported')); navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:false, timeout:10000 }); });
+                // Directly request current position to trigger browser prompt (explicit force)
+                await getCurrentPosition({ enableHighAccuracy:false, timeout:10000, force:true });
               }catch(err){ alert('Could not get location permission: ' + (err.message || err)); e.target.checked = false; return; }
               await loadSupabaseIfMissing();
               startActiveTracking();
@@ -122,7 +125,21 @@
         try{
           const actionsBtn = document.getElementById('actionsBtn');
           if(actionsBtn){
-            actionsBtn.addEventListener('click', function(ev){ ev.preventDefault(); const p = document.getElementById('msuActionsPanel'); if(p) p.classList.toggle('open'); });
+            actionsBtn.addEventListener('click', function(ev){
+              ev.preventDefault();
+              const p = document.getElementById('msuActionsPanel');
+              if(p) p.classList.toggle('open');
+              // After toggle, if panel remains hidden (backgrounded), apply floating fallback
+              setTimeout(()=>{
+                try{
+                  const pnl = document.getElementById('msuActionsPanel');
+                  if(!pnl) return;
+                  const style = window.getComputedStyle(pnl);
+                  const visible = style && style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity || '1') > 0;
+                  if(!visible){ pnl.classList.add('floating'); pnl.classList.add('open'); }
+                }catch(e){}
+              }, 150);
+            });
           }
         }catch(e){}
       }
