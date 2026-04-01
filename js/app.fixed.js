@@ -107,7 +107,7 @@
   }
 
   // Expose to global surface for other scripts / UI wiring
-  window.MSUMapApp = Object.assign(window.MSUMapApp || {}, { sessionId, startActiveTracking, stopActiveTracking, refreshHeatmap });
+  window.MSUMapApp = Object.assign(window.MSUMapApp || {}, { sessionId, startActiveTracking, stopActiveTracking, refreshHeatmap, loadSupabaseIfMissing, addIssueMarker });
 
   // Issue markers management
   let _issueMarkers = {};
