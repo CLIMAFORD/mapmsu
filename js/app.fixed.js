@@ -31,6 +31,21 @@
     }catch(e){ console.warn('Could not load supabase JS', e); return null; }
   }
 
+  // Setup realtime subscriptions for issues table (listen for inserts)
+  function setupRealtimeSubscriptions(){
+    try{
+      if(!supabase || !supabase.channel) return;
+      // unsubscribe existing channel if any
+      try{ if(window._msu_issues_channel) { supabase.removeChannel(window._msu_issues_channel); window._msu_issues_channel = null; } }catch(e){}
+      const ch = supabase.channel('public:issues')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'issues' }, payload => {
+          try{ const row = payload.new; if(row && row.lat && row.lon){ addIssueMarker(row); } }catch(e){}
+        })
+        .subscribe();
+      window._msu_issues_channel = ch;
+    }catch(e){ console.warn('setupRealtimeSubscriptions failed', e); }
+  }
+
   // Reporting UI and submit removed
 
   function getCurrentPosition(options){
@@ -94,6 +109,24 @@
   // Expose to global surface for other scripts / UI wiring
   window.MSUMapApp = Object.assign(window.MSUMapApp || {}, { sessionId, startActiveTracking, stopActiveTracking, refreshHeatmap });
 
+  // Issue markers management
+  let _issueMarkers = {};
+  function addIssueMarker(row){
+    try{
+      const id = row.id || ('i_'+(row.created_at?Date.parse(row.created_at):Date.now()));
+      if(!row.lat || !row.lon) return;
+      const lat = Number(row.lat), lon = Number(row.lon);
+      if(!isFinite(lat) || !isFinite(lon)) return;
+      if(_issueMarkers[id]) return;
+      const hasImage = row.image_url && String(row.image_url).startsWith('http');
+      const html = `<div style="width:36px;height:36px;border-radius:18px;background:#ef4444;display:flex;align-items:center;justify-content:center;border:2px solid #fff;overflow:hidden"><img src="${hasImage?row.image_url:''}" style="width:36px;height:36px;object-fit:cover;display:${hasImage?'block':'none'}"/></div>`;
+      const icon = L.divIcon({ html, className: 'msu-issue-marker', iconSize:[36,36], iconAnchor:[18,18] });
+      const m = L.marker([lat, lon], { icon }).addTo(map);
+      m.bindPopup(`<div style="max-width:200px"><strong>Status:</strong> ${row.status||'New'}<br/><div style="margin-top:6px">${row.description?String(row.description):''}</div>${hasImage?'<div style="margin-top:6px"><img src="'+row.image_url+'" style="width:100%;height:auto;"/></div>':''}</div>`);
+      _issueMarkers[id] = m;
+    }catch(e){ console.warn('addIssueMarker error', e); }
+  }
+
   // Attempt to wire heat toggle to start/stop server tracking when UI exists
   (function wireHeatToggle(){
     try{
@@ -145,6 +178,37 @@
       }
       if(document.readyState === 'complete' || document.readyState === 'interactive') attach(); else document.addEventListener('DOMContentLoaded', attach);
     }catch(e){ /* ignore */ }
+  })();
+
+  // Issue reporting UI wiring: form inside Actions panel
+  (function wireIssueReporting(){
+    function attach(){
+      const submit = document.getElementById('tool_issue_submit');
+      if(!submit) return;
+      submit.addEventListener('click', async ()=>{
+        const desc = (document.getElementById('tool_issue_desc')||{}).value || '';
+        const photoEl = document.getElementById('tool_issue_photo');
+        try{
+          await loadSupabaseIfMissing();
+          if(!supabase){ alert('Reporting not available: Supabase client could not be initialized'); return; }
+          // get device location (force)
+          const pos = await getCurrentPosition({ enableHighAccuracy:false, timeout:10000, force:true }).catch(()=>null);
+          if(!pos){ alert('Could not get location for the issue. Please allow location.'); return; }
+          const lat = pos.coords.latitude, lon = pos.coords.longitude;
+          let image_url = null, path = null;
+          if(photoEl && photoEl.files && photoEl.files.length){ const file = photoEl.files[0]; const filename = `${Date.now()}_${Math.random().toString(36).slice(2,8)}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'')}`; try{ const { data: uploadData, error: uploadError } = await supabase.storage.from(ISSUE_BUCKET).upload(filename, file); if(uploadError){ console.warn('upload error', uploadError); } else { path = uploadData.path; const pub = supabase.storage.from(ISSUE_BUCKET).getPublicUrl(path).data?.publicUrl; image_url = pub || null; } }catch(e){ console.warn('upload exception', e); }
+          }
+          const obj = { description: desc || null, lat, lon, image_url, status: 'New', created_at: new Date().toISOString() };
+          try{
+            const { data, error } = await supabase.from(ISSUES_TABLE).insert([obj]);
+            if(error){ console.warn('issue insert error', error); // if table missing, save locally
+              const pending = JSON.parse(localStorage.getItem('pending_issues')||'[]'); pending.push(obj); localStorage.setItem('pending_issues', JSON.stringify(pending)); alert('Issue saved locally. Reporting server table may not exist yet.'); return; }
+            alert('Issue reported.');
+          }catch(e){ console.warn('insert exception', e); const pending = JSON.parse(localStorage.getItem('pending_issues')||'[]'); pending.push(obj); localStorage.setItem('pending_issues', JSON.stringify(pending)); alert('Issue saved locally.'); }
+        }catch(e){ console.warn('submit issue failed', e); alert('Could not submit issue: '+(e.message||e)); }
+      });
+    }
+    if(document.readyState === 'complete' || document.readyState === 'interactive') attach(); else document.addEventListener('DOMContentLoaded', attach);
   })();
 
 })();

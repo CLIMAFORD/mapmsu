@@ -55,6 +55,13 @@
         .msu-actions-panel.open { display:block; }
         /* Floating fallback: if panel fails to open normally, make it float above map */
         .msu-actions-panel.floating { position: fixed !important; left: 12px !important; top: 80px !important; width: 360px !important; bottom: auto !important; max-height: 70vh !important; z-index: 99999 !important; display:block !important; box-shadow: 0 6px 24px rgba(0,0,0,0.24) !important; border-radius:8px; }
+        /* Responsive adjustments */
+        @media (max-width: 900px){
+            .msu-actions-panel, .msu-side-panel, .msu-side-panel.open { left: 0 !important; right: 0 !important; width: auto !important; height: 50vh !important; max-height: 50vh !important; bottom: 0 !important; top: auto !important; border-radius: 8px 8px 0 0; box-shadow: 0 -8px 24px rgba(0,0,0,0.18); }
+            .campus-header { height:56px; }
+            #map { margin-top:56px; }
+            .msu-actions-panel.floating { left: 8px !important; right: 8px !important; top: auto !important; bottom: 12px !important; max-height: 60vh !important; }
+        }
         .msu-actions-panel .close { position: absolute; right: 8px; top: 8px; background:#eee; border-radius:4px; padding:4px 8px; cursor:pointer; }
         </style>
         <title>Maseno University Facility Map</title>
@@ -104,6 +111,15 @@
                                 <button id="tool_search_next" class="campus-btn ghost">Next</button>
                             </div>
                             <div id="tool_search_status" style="margin-top:8px;font-size:13px;color:#333"></div>
+                        </div>
+                        <div id="tabReportPanel" style="display:none">
+                            <h4>Report Issue</h4>
+                            <label style="display:block;margin-top:6px">Description<textarea id="tool_issue_desc" style="width:100%;height:80px;margin-top:6px"></textarea></label>
+                            <label style="display:block;margin-top:6px">Photo (optional)<input id="tool_issue_photo" type="file" accept="image/*" /></label>
+                            <div style="display:flex;gap:8px;margin-top:8px">
+                                <button id="tool_issue_submit" class="campus-btn">Submit</button>
+                            </div>
+                            <div id="tool_issue_status" style="margin-top:8px;font-size:13px;color:#333"></div>
                         </div>
                         <!-- Directions removed -->
                         <div id="tabHeatPanel" style="display:none">
