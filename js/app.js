@@ -340,7 +340,35 @@
       const fromMap = document.getElementById('dirFromMap'); if(fromMap) fromMap.addEventListener('click', ()=>{ routingSelectMode = 'from'; try{ alert('Click on the map to select origin'); }catch(e){} });
       const toMap = document.getElementById('dirToMap'); if(toMap) toMap.addEventListener('click', ()=>{ routingSelectMode = 'to'; try{ alert('Click on the map to select destination'); }catch(e){} });
       const useMy = document.getElementById('dirUseMyLocation'); if(useMy) useMy.addEventListener('click', async ()=>{ try{ const pos = await getCurrentPosition({enableHighAccuracy:true, timeout:10000, force:true}); const latlng = L.latLng(pos.coords.latitude,pos.coords.longitude); if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(latlng).addTo(map); const o = document.getElementById('dirOrigin'); if(o) o.value = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`; try{ map.setView(latlng,17); }catch(e){} }catch(err){ alert('Could not get location: '+(err.message||err)); } });
-      const routeBtn = document.getElementById('dirRoute'); if(routeBtn) routeBtn.addEventListener('click', async ()=>{ const o = document.getElementById('dirOrigin'); const d = document.getElementById('dirDest'); if(!o||!d) return; const a = parseLatLng(o.value); const b = parseLatLng(d.value); if(!a||!b){ alert('Please enter or select origin and destination (lat, lon)'); return; } if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(a).addTo(map); if(destMarker) try{ map.removeLayer(destMarker); }catch(e){} destMarker = L.marker(b).addTo(map); await routeBetween(a,b); });
+      const routeBtn = document.getElementById('dirRoute'); if(routeBtn) routeBtn.addEventListener('click', async ()=>{ try{
+        const o = document.getElementById('dirOrigin'); const d = document.getElementById('dirDest'); if(!o||!d) return;
+        async function resolveInput(val){
+          if(!val) return null;
+          // try lat,lng
+          const p = parseLatLng(val); if(p) return p;
+          // try to find by matching layer features or json_* variables
+          const q = String(val).trim().toLowerCase();
+          // search loaded leaflet group first
+          try{
+            if(window.bounds_group && typeof window.bounds_group.getLayers === 'function'){
+              const layers = window.bounds_group.getLayers();
+              for(const gl of layers){ if(!gl || typeof gl.getLayers !== 'function') continue; const fls = gl.getLayers(); for(const fl of fls){ try{ const props = (fl && fl.feature && fl.feature.properties) ? fl.feature.properties : {}; const name = (props.Name||props.name||props.NAME||'').toString().toLowerCase(); if(name && name.indexOf(q)!==-1){ // compute center
+                        try{ const bounds = fl.getBounds ? fl.getBounds() : null; if(bounds && bounds.isValid()) return bounds.getCenter(); else if(fl.getLatLng) return fl.getLatLng(); }catch(e){} }
+                }catch(e){}
+              }
+            }
+          }catch(e){}
+          // fallback to raw json_* globals
+          for(const k in window){ if(!k.startsWith('json_')) continue; const obj = window[k]; if(!obj || !obj.features) continue; for(const f of obj.features){ try{ const props = f.properties || {}; const name = (props.Name||props.name||props.NAME||'').toString().toLowerCase(); if(name && name.indexOf(q)!==-1){ try{ const gj = L.geoJSON(f); const b = gj.getBounds(); if(b && b.isValid()) return b.getCenter(); }catch(e){} } }catch(e){} }
+          }
+          return null;
+        }
+        const a = await resolveInput(o.value); const b = await resolveInput(d.value);
+        if(!a || !b){ alert('Please provide valid origin and destination (place name, lat,lng, or map selection)'); return; }
+        if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(a).addTo(map);
+        if(destMarker) try{ map.removeLayer(destMarker); }catch(e){} destMarker = L.marker(b).addTo(map);
+        await routeBetween(a,b);
+      }catch(err){ console.warn('route button error', err); alert('Routing failed: '+(err.message||err)); } });
       const clearBtn = document.getElementById('dirClear'); if(clearBtn) clearBtn.addEventListener('click', ()=>{ try{ if(routeLayer) map.removeLayer(routeLayer); if(originMarker) map.removeLayer(originMarker); if(destMarker) map.removeLayer(destMarker); document.getElementById('dirSummary').innerHTML=''; document.getElementById('dirSteps').innerHTML=''; }catch(e){} });
 
       // Issues/reporting removed
