@@ -1,17 +1,6 @@
 // App: routing and reporting functions have been removed for refactor
 (function(){
-  // Simplified image fetcher — use feature properties only (Supabase/reporting removed).
-  async function fetchBuildingImages(feature){
-    const result = { interior: null, exterior: null };
-    if(!feature || !feature.properties) return result;
-    const props = feature.properties || {};
-    result.interior = props.interior_image || props.interior || props.Interior || props.Photo || props.photo || null;
-    result.exterior = props.exterior_image || props.exterior || props.Exterior || props.Photo || props.photo || null;
-    return result;
-  }
-  window.fetchBuildingImages = fetchBuildingImages;
-  // Expose a minimal MSUMapApp surface now; routing/reporting will be reimplemented fresh later.
-  window.MSUMapApp = { fetchBuildingImages };
+  // (Detailed `fetchBuildingImages` implementation appears later and will be used.)
 
   // --- Search wiring and implementation ---
   const searchBtn = document.getElementById('searchBtn');
