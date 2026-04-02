@@ -324,54 +324,56 @@
       const actionsBtn = document.getElementById('actionsBtn');
       if(actionsBtn) actionsBtn.addEventListener('click', (e)=>{ e.preventDefault(); const p = document.getElementById('msuActionsPanel'); if(p) p.classList.toggle('open'); });
       const actionsClose = document.getElementById('actionsClose'); if(actionsClose) actionsClose.addEventListener('click', ()=>{ const p = document.getElementById('msuActionsPanel'); if(p) p.classList.remove('open'); });
+      const openReport = document.getElementById('openReport'); if(openReport) openReport.addEventListener('click', (e)=>{ e.preventDefault(); try{ if(typeof window.MSUMapApp !== 'undefined' && window.MSUMapApp.showIssueModal) window.MSUMapApp.showIssueModal(); else { const evt = new Event('openReportModal'); document.dispatchEvent(evt); } }catch(err){} });
       const ts = document.getElementById('tabSearch'); if(ts) ts.addEventListener('click', ()=>switchToolsTab('search'));
       const th = document.getElementById('tabHeat'); if(th) th.addEventListener('click', ()=>switchToolsTab('heat'));
 
       // Directions routing: OSRM
       let routeLayer = null; let originMarker = null, destMarker = null; let routingSelectMode = null;
       function parseLatLng(v){ if(!v) return null; const m = String(v).trim().match(/(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/); if(!m) return null; const a = parseFloat(m[1]), b = parseFloat(m[2]); if(!isFinite(a)||!isFinite(b)) return null; return L.latLng(a,b); }
-      async function routeBetween(a,b){ try{ if(!a||!b) return; const url = `https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson&steps=true`; const resp = await fetch(url); if(!resp.ok) throw new Error('Routing API error '+resp.status); const data = await resp.json(); if(!data || !data.routes || !data.routes.length) throw new Error('No route'); const r = data.routes[0]; if(routeLayer) try{ map.removeLayer(routeLayer); }catch(e){} routeLayer = L.geoJSON(r.geometry, { style:{ color:'#0b84ff', weight:5, opacity:0.9 } }).addTo(map); try{ if(routeLayer.getBounds && routeLayer.getBounds().isValid()) map.fitBounds(routeLayer.getBounds().pad(0.08)); }catch(e){} const summary = document.getElementById('dirSummary'); if(summary) summary.innerHTML = `<div><strong>Distance:</strong> ${Math.round(r.distance)} m — <strong>Duration:</strong> ${Math.round(r.duration)} s</div>`; const stepsEl = document.getElementById('dirSteps'); if(stepsEl){ stepsEl.innerHTML=''; (r.legs||[]).forEach(leg=>{ const ol = document.createElement('ol'); (leg.steps||[]).forEach(s=>{ const li = document.createElement('li'); li.style.marginBottom='6px'; const instr = (s.maneuver && (s.maneuver.instruction || s.maneuver.type)) || s.name || ''; li.innerText = `${Math.round(s.distance)} m — ${Math.round(s.duration)} s — ${instr}`; ol.appendChild(li); }); stepsEl.appendChild(ol); }); }
-      }catch(err){ console.warn('routeBetween error', err); const summary = document.getElementById('dirSummary'); if(summary) summary.innerText = 'Routing error: '+(err.message||err); }
-      }
-
-      // Resolve an origin/destination input which may be lat/lon, a feature name, or a polygon name
-      async function resolvePlaceInput(val){
-        if(!val) return null;
-        // Try lat,lng
-        const latlng = parseLatLng(val);
+      // Resolve an input string to a LatLng
+      async function resolvePlaceInput(input){
+        if(!input) return null;
+        input = String(input).trim();
+        // 1) lat, lon
+        const latlng = parseLatLng(input);
         if(latlng) return latlng;
-        const q = String(val).trim().toLowerCase();
-        // search declared layers first
+        // 2) search declared leaflet layers first
         try{
-          const groups = (window.bounds_group && typeof window.bounds_group.getLayers === 'function') ? window.bounds_group.getLayers() : [];
-          for(const g of groups){
-            if(!g || typeof g.getLayers !== 'function') continue;
-            for(const layer of g.getLayers()){
-              try{
-                const props = layer && layer.feature && layer.feature.properties ? layer.feature.properties : {};
-                const name = (props.Name || props.name || props.NAME || '').toString().toLowerCase();
-                if(name && name.indexOf(q) !== -1){
-                  // use centroid or layer.getBounds
-                  try{ if(typeof layer.getBounds === 'function'){ const b = layer.getBounds(); return b.getCenter(); } }catch(e){}
-                  try{ if(typeof layer.getLatLng === 'function') return layer.getLatLng(); }catch(e){}
+          const names = getDeclaredLayers();
+          const q = input.toLowerCase();
+          for(const layer of names){
+            try{
+              if(layer && typeof layer.getLayers === 'function'){
+                const kids = layer.getLayers();
+                for(const f of kids){
+                  const props = (f && f.feature && f.feature.properties) ? f.feature.properties : {};
+                  const name = (props.Name || props.name || props.NAME || '').toString().toLowerCase();
+                  if(name && name.indexOf(q) !== -1){
+                    // use feature centroid or latlng
+                    if(typeof f.getLatLng === 'function') return f.getLatLng();
+                    if(typeof f.getBounds === 'function'){ const b = f.getBounds(); return b.getCenter(); }
+                  }
                 }
-              }catch(e){}
+              }
+            }catch(e){}
+          }
+          // 3) fallback: scan global json_* features
+          for(const k in window){ if(!k.startsWith('json_')) continue; const obj = window[k]; if(obj && obj.features && Array.isArray(obj.features)){
+            for(const feat of obj.features){ try{ const props = feat.properties || {}; const name = (props.Name||props.name||props.NAME||'').toString().toLowerCase(); if(name && name.indexOf(input.toLowerCase()) !== -1){ // return centroid
+                  if(feat.geometry && feat.geometry.type === 'Point' && feat.geometry.coordinates){ return L.latLng(feat.geometry.coordinates[1], feat.geometry.coordinates[0]); }
+                  if(feat.geometry && (feat.geometry.type === 'Polygon' || feat.geometry.type === 'MultiPolygon')){
+                    // compute simple centroid
+                    const coords = feat.geometry.coordinates[0] || feat.geometry.coordinates;
+                    if(coords && coords.length){ const c = coords[0]; return L.latLng(c[1], c[0]); }
+                  }
+                } }catch(e){}
             }
           }
         }catch(e){}
-        // Fallback: search global json_* objects
-        for(const k in window){ if(!k.startsWith('json_')) continue; const obj = window[k]; if(!obj || !obj.features) continue; for(const f of obj.features){ try{ const props = f.properties || {}; const name = (props.Name||props.name||props.NAME||'').toString().toLowerCase(); if(name && name.indexOf(q)!==-1){ // compute centroid from geometry
-                    if(f.geometry && f.geometry.type === 'Point' && f.geometry.coordinates){ return L.latLng(f.geometry.coordinates[1], f.geometry.coordinates[0]); }
-                    if(f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')){
-                      const coords = (f.geometry.coordinates && f.geometry.coordinates[0] && f.geometry.coordinates[0][0]) ? f.geometry.coordinates[0][0] : null;
-                      if(coords && coords.length){ const c = coords[0]; return L.latLng(c[1], c[0]); }
-                    }
-                  }
-                }catch(e){}
-            }
-        }
         return null;
       }
+      async function routeBetween(a,b){ try{ if(!a||!b) return; const url = `https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson&steps=true`; const resp = await fetch(url); if(!resp.ok) throw new Error('Routing API error '+resp.status); const data = await resp.json(); if(!data || !data.routes || !data.routes.length) throw new Error('No route'); const r = data.routes[0]; if(routeLayer) try{ map.removeLayer(routeLayer); }catch(e){} routeLayer = L.geoJSON(r.geometry, { style:{ color:'#0b84ff', weight:5, opacity:0.9 } }).addTo(map); try{ if(routeLayer.getBounds && routeLayer.getBounds().isValid()) map.fitBounds(routeLayer.getBounds().pad(0.08)); }catch(e){} const summary = document.getElementById('dirSummary'); if(summary) summary.innerHTML = `<div><strong>Distance:</strong> ${Math.round(r.distance)} m — <strong>Duration:</strong> ${Math.round(r.duration)} s</div>`; const stepsEl = document.getElementById('dirSteps'); if(stepsEl){ stepsEl.innerHTML=''; (r.legs||[]).forEach(leg=>{ const ol = document.createElement('ol'); (leg.steps||[]).forEach(s=>{ const li = document.createElement('li'); li.style.marginBottom='6px'; const instr = (s.maneuver && (s.maneuver.instruction || s.maneuver.type)) || s.name || ''; li.innerText = `${Math.round(s.distance)} m — ${Math.round(s.duration)} s — ${instr}`; ol.appendChild(li); }); stepsEl.appendChild(ol); }); }
       }catch(err){ console.warn('routeBetween error', err); const summary = document.getElementById('dirSummary'); if(summary) summary.innerText = 'Routing error: '+(err.message||err); }
       }
       // map click selection for routing
@@ -381,7 +383,18 @@
       const fromMap = document.getElementById('dirFromMap'); if(fromMap) fromMap.addEventListener('click', ()=>{ routingSelectMode = 'from'; try{ alert('Click on the map to select origin'); }catch(e){} });
       const toMap = document.getElementById('dirToMap'); if(toMap) toMap.addEventListener('click', ()=>{ routingSelectMode = 'to'; try{ alert('Click on the map to select destination'); }catch(e){} });
       const useMy = document.getElementById('dirUseMyLocation'); if(useMy) useMy.addEventListener('click', async ()=>{ try{ const pos = await getCurrentPosition({enableHighAccuracy:true, timeout:10000, force:true}); const latlng = L.latLng(pos.coords.latitude,pos.coords.longitude); if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(latlng).addTo(map); const o = document.getElementById('dirOrigin'); if(o) o.value = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`; try{ map.setView(latlng,17); }catch(e){} }catch(err){ alert('Could not get location: '+(err.message||err)); } });
-      const routeBtn = document.getElementById('dirRoute'); if(routeBtn) routeBtn.addEventListener('click', async ()=>{ const o = document.getElementById('dirOrigin'); const d = document.getElementById('dirDest'); if(!o||!d) return; const a = parseLatLng(o.value); const b = parseLatLng(d.value); if(!a||!b){ alert('Please enter or select origin and destination (lat, lon)'); return; } if(originMarker) try{ map.removeLayer(originMarker); }catch(e){} originMarker = L.marker(a).addTo(map); if(destMarker) try{ map.removeLayer(destMarker); }catch(e){} destMarker = L.marker(b).addTo(map); await routeBetween(a,b); });
+      const routeBtn = document.getElementById('dirRoute'); if(routeBtn) routeBtn.addEventListener('click', async ()=>{
+        const o = document.getElementById('dirOrigin'); const d = document.getElementById('dirDest'); if(!o||!d) return;
+        // resolve both inputs (names, lat/lon or polygons)
+        const a = await resolvePlaceInput(o.value) || null;
+        const b = await resolvePlaceInput(d.value) || null;
+        if(!a || !b){ alert('Please enter or select origin and destination (name, lat,lng, or click on map)'); return; }
+        try{ if(originMarker) map.removeLayer(originMarker); }catch(e){}
+        originMarker = L.marker(a).addTo(map);
+        try{ if(destMarker) map.removeLayer(destMarker); }catch(e){}
+        destMarker = L.marker(b).addTo(map);
+        await routeBetween(a,b);
+      });
       const clearBtn = document.getElementById('dirClear'); if(clearBtn) clearBtn.addEventListener('click', ()=>{ try{ if(routeLayer) map.removeLayer(routeLayer); if(originMarker) map.removeLayer(originMarker); if(destMarker) map.removeLayer(destMarker); document.getElementById('dirSummary').innerHTML=''; document.getElementById('dirSteps').innerHTML=''; }catch(e){} });
 
       // Issues/reporting removed

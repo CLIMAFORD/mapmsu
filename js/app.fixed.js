@@ -91,97 +91,89 @@
     }catch(e){ console.warn('refreshHeatmap error', e); }
   }
 
-  // Issues markers and realtime/fallback polling
-  const issueMarkers = {};
-  async function loadIssues(){
+  // Issues: render markers, show modal, submit issue
+  let _issueMarkers = [];
+  async function fetchAndRenderIssues(){
     try{
       const s = await loadSupabaseIfMissing();
       if(!s || !supabase) return;
       const { data, error } = await supabase.from(ISSUES_TABLE).select('*').order('created_at', { ascending: false }).limit(1000);
-      if(error){ console.warn('loadIssues error', error); return; }
-      if(!data) return;
-      // clear existing
-      for(const id in issueMarkers){ try{ map.removeLayer(issueMarkers[id]); }catch(e){} }
-      Object.keys(issueMarkers).forEach(k=>delete issueMarkers[k]);
-      for(const row of data){ try{ addOrUpdateIssueMarker(row); }catch(e){} }
-      const statusEl = document.getElementById('report_status'); if(statusEl) statusEl.textContent = `${data.length} issues loaded`;
-    }catch(e){ console.warn('loadIssues failed', e); }
+      if(error){ console.warn('issues fetch error', error); return; }
+      // clear previous
+      try{ _issueMarkers.forEach(m=>{ if(m && map) try{ map.removeLayer(m); }catch(e){} }); }catch(e){}
+      _issueMarkers = [];
+      (data||[]).forEach(row=>{
+        try{
+          if(!row.lat || !row.lon) return;
+          const col = (row.status === 'Resolved') ? '#10b981' : (row.status === 'In Progress' ? '#f59e0b' : '#ef4444');
+          const m = L.circleMarker([Number(row.lat), Number(row.lon)], { radius:8, fillColor: col, color:'#333', weight:1, fillOpacity:0.9 }).addTo(map);
+          const popup = `<div style="max-width:200px"><strong>${(row.status||'New')}</strong><div style="font-size:13px;margin-top:4px">${row.description||''}</div>${row.image_url?'<div style="margin-top:6px"><img src="'+row.image_url+'" style="width:100%;height:auto;border-radius:4px"/></div>':''}<div style="font-size:11px;color:#666;margin-top:6px">${new Date(row.created_at).toLocaleString()}</div></div>`;
+          m.bindPopup(popup);
+          _issueMarkers.push(m);
+        }catch(e){}
+      });
+    }catch(e){ console.warn('fetchAndRenderIssues error', e); }
   }
-
-  function issueIconColor(status){ if(!status) return 'red'; const s = String(status).toLowerCase(); if(s.indexOf('new')!==-1) return 'red'; if(s.indexOf('progress')!==-1 || s.indexOf('in progress')!==-1) return 'yellow'; if(s.indexOf('resolved')!==-1) return 'green'; return 'gray'; }
-  function addOrUpdateIssueMarker(row){ if(!row || !row.id) return; try{ const lat = Number(row.lat), lon = Number(row.lon); if(!isFinite(lat) || !isFinite(lon)) return; const col = issueIconColor(row.status); const marker = L.circleMarker([lat, lon], { radius:8, fillColor: col, color:'#222', weight:1, fillOpacity:0.9 }).addTo(map); const popup = `<div style="min-width:160px"><strong>${row.status || 'New'}</strong><div style="font-size:13px;margin-top:6px">${row.description || ''}</div>${row.image_url?'<div style="margin-top:6px"><img src="'+row.image_url+'" style="width:100%;height:auto;border-radius:4px"/></div>':''}<div style="margin-top:6px;font-size:11px;color:#666">${row.created_at||''}</div></div>`; marker.bindPopup(popup); issueMarkers[row.id] = marker; }catch(e){ console.warn('addOrUpdateIssueMarker failed', e); } }
 
   async function setupRealtimeSubscriptions(){
     try{
-      const s = await loadSupabaseIfMissing(); if(!s || !supabase) return;
-      // Try realtime subscription for issues (v2 API)
-      try{
-        const channel = supabase.channel('public:issues');
-        channel.on('postgres_changes', { event: '*', schema: 'public', table: ISSUES_TABLE }, (payload)=>{
-          const ev = payload.eventType || payload.type || (payload.event && payload.event.type) || 'unknown';
-          const record = payload.new || payload.record || payload;
-          if(ev === 'INSERT' || payload.eventType === 'INSERT') addOrUpdateIssueMarker(record);
-          if(ev === 'UPDATE' || payload.eventType === 'UPDATE') addOrUpdateIssueMarker(record);
-          if(ev === 'DELETE' || payload.eventType === 'DELETE'){
-            const old = payload.old || payload.record || payload.old_record || null;
-            if(old && old.id && issueMarkers[old.id]){ try{ map.removeLayer(issueMarkers[old.id]); delete issueMarkers[old.id]; }catch(e){} }
-          }
+      await loadSupabaseIfMissing();
+      if(!supabase || !supabase.channel) return;
+      try{ // subscribe to changes on issues table
+        const chan = supabase.channel('public:issues').on('postgres_changes', { event: '*', schema: 'public', table: ISSUES_TABLE }, payload=>{
+          // re-fetch and render
+          fetchAndRenderIssues();
         });
-        await channel.subscribe();
+        await chan.subscribe();
       }catch(e){ console.warn('realtime subscribe failed', e); }
-      // Also do polling fallback
-      setInterval(loadIssues, 30 * 1000);
-      // initial load
-      loadIssues();
-    }catch(e){ console.warn('setupRealtimeSubscriptions failed', e); }
+    }catch(e){ console.warn('setupRealtimeSubscriptions error', e); }
   }
 
-  // Submit an issue from UI: description, optional photo, and lat/lon
-  let _reportChooseMode = null; // 'map' when picking point
-  function showReportStatus(msg){ const s = document.getElementById('report_status'); if(s) s.textContent = msg; }
-  async function submitIssueFromUI(){
-    try{
-      const desc = (document.getElementById('report_desc')||{}).value || '';
-      const photoEl = document.getElementById('report_photo');
-      let lat = null, lon = null;
-      if(_reportChooseMode === 'map' && window._lastPickedIssueLatLng){ lat = window._lastPickedIssueLatLng.lat; lon = window._lastPickedIssueLatLng.lng; }
-      else{
-        try{ const pos = await getCurrentPosition({ enableHighAccuracy:false, timeout:10000, force:true }); lat = pos.coords.latitude; lon = pos.coords.longitude; }catch(e){}
-      }
-      if(!lat || !lon){ showReportStatus('Could not determine location. Use choose on map or allow location.'); return; }
-      showReportStatus('Uploading photo (if any) and saving...');
-      let image_url = null;
-      if(photoEl && photoEl.files && photoEl.files.length){ const file = photoEl.files[0]; const filename = `issue_${Date.now()}_${Math.random().toString(36).slice(2,8)}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'')}`; try{ const up = await supabase.storage.from(ISSUE_BUCKET).upload(filename, file, { upsert: false }); if(up.error){ console.warn('upload error', up.error); } else { const pu = supabase.storage.from(ISSUE_BUCKET).getPublicUrl(up.data.path); image_url = pu?.data?.publicUrl || null; } }catch(e){ console.warn('photo upload failed', e); }}
-      // insert into issues table
-      try{
-        const payload = { description: desc, lat: lat, lon: lon, status: 'New', image_url: image_url, created_at: new Date().toISOString() };
-        const { data, error } = await supabase.from(ISSUES_TABLE).insert([payload]);
-        if(error){ console.warn('issue insert error', error); showReportStatus('Save failed. Offline saved locally.'); // fallback local
-          const list = JSON.parse(localStorage.getItem('pending_issues')||'[]'); list.push(payload); localStorage.setItem('pending_issues', JSON.stringify(list)); return; }
-        showReportStatus('Issue reported. Thank you.');
-        // clear form
-        (document.getElementById('report_desc')||{}).value = '';
-        if(photoEl) photoEl.value = null;
-      }catch(e){ console.warn('submitIssue failed', e); showReportStatus('Submit failed.'); }
-    }catch(e){ console.warn('submitIssueFromUI error', e); showReportStatus('Error: '+(e.message||e)); }
+  // Show issue modal and submit
+  let _issueModal = null;
+  function showIssueModal(){
+    if(_issueModal) return;
+    _issueModal = document.createElement('div');
+    _issueModal.className = 'msu-side-panel';
+    _issueModal.style.left = '50%'; _issueModal.style.transform = 'translateX(-50%)'; _issueModal.style.top = '80px'; _issueModal.style.width = '360px'; _issueModal.style.zIndex = 99999; _issueModal.style.display = 'block';
+    _issueModal.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><strong>Report Issue</strong><button id="closeIssueModal" class="campus-btn ghost">Close</button></div><div style="margin-top:8px"><label style="font-weight:600">Description</label><textarea id="issue_desc" style="width:100%;height:100px;margin-top:6px"></textarea><label style="display:block;margin-top:8px">Photo (optional)<input id="issue_photo" type="file" accept="image/*"/></label><div style="display:flex;gap:8px;margin-top:8px"><button id="issue_submit" class="campus-btn">Submit</button><button id="issue_cancel" class="campus-btn ghost">Cancel</button></div><div id="issue_status" style="margin-top:8px;font-size:13px;color:#333"></div></div>`;
+    document.body.appendChild(_issueModal);
+    document.getElementById('closeIssueModal').addEventListener('click', hideIssueModal);
+    document.getElementById('issue_cancel').addEventListener('click', hideIssueModal);
+    document.getElementById('issue_submit').addEventListener('click', submitIssue);
   }
+  function hideIssueModal(){ if(_issueModal){ _issueModal.remove(); _issueModal=null; } }
 
-  // UI bindings for report section
-  (function wireReportUI(){
+  async function submitIssue(){
+    const statusEl = document.getElementById('issue_status'); if(statusEl) statusEl.textContent = 'Submitting...';
     try{
-      function attach(){
-        const useBtn = document.getElementById('report_use_loc'); if(useBtn) useBtn.addEventListener('click', async ()=>{ try{ const pos = await getCurrentPosition({enableHighAccuracy:false, timeout:10000, force:true}); window._lastPickedIssueLatLng = { lat: pos.coords.latitude, lng: pos.coords.longitude }; showReportStatus(`Location set: ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`); }catch(e){ showReportStatus('Location failed: '+(e.message||e)); } });
-        const pickBtn = document.getElementById('report_from_map'); if(pickBtn) pickBtn.addEventListener('click', ()=>{ _reportChooseMode = 'map'; showReportStatus('Click on the map to choose issue location'); });
-        const submitBtn = document.getElementById('report_submit'); if(submitBtn) submitBtn.addEventListener('click', submitIssueFromUI);
-        // Map click handler for picking issue location
-        if(typeof map !== 'undefined' && map && map.on){ map.on('click', function(e){ if(_reportChooseMode === 'map'){ window._lastPickedIssueLatLng = e.latlng; _reportChooseMode = null; showReportStatus(`Location chosen: ${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`); } }); }
+      const desc = (document.getElementById('issue_desc')||{}).value || '';
+      const photoEl = document.getElementById('issue_photo'); let public_url = null, path = null;
+      await loadSupabaseIfMissing();
+      if(photoEl && photoEl.files && photoEl.files.length && supabase){
+        const file = photoEl.files[0];
+        const filename = `${Date.now()}_${Math.random().toString(36).slice(2,8)}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'')}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage.from(ISSUE_BUCKET).upload(filename, file, { upsert: false });
+        if(uploadError){ console.warn('upload error', uploadError); }
+        else { path = uploadData.path; public_url = supabase.storage.from(ISSUE_BUCKET).getPublicUrl(path).data.publicUrl; }
       }
-      if(document.readyState === 'complete' || document.readyState === 'interactive') attach(); else document.addEventListener('DOMContentLoaded', attach);
-    }catch(e){ console.warn('wireReportUI failed', e); }
-  })();
+      // get location (must be user gesture)
+      let pos = null;
+      try{ pos = await getCurrentPosition({ enableHighAccuracy:false, timeout:10000, force:true }); }catch(e){}
+      const lat = pos ? pos.coords.latitude : null; const lon = pos ? pos.coords.longitude : null;
+      if(!supabase){ // fallback to localStorage
+        const pending = JSON.parse(localStorage.getItem('pending_issues')||'[]'); pending.push({ id: 'local_'+Date.now(), description: desc, image_url: public_url, image_path: path, lat, lon, status: 'New', created_at: new Date().toISOString() }); localStorage.setItem('pending_issues', JSON.stringify(pending)); if(statusEl) statusEl.textContent = 'Saved locally (Supabase unavailable)'; fetchAndRenderIssues(); setTimeout(hideIssueModal,800); return;
+      }
+      const insertObj = { description: desc, status: 'New', lat, lon, image_path: path, image_url: public_url, session_id: sessionId };
+      const { data, error } = await supabase.from(ISSUES_TABLE).insert([insertObj]);
+      if(error){ console.warn('issue insert error', error); if(statusEl) statusEl.textContent = 'Submit failed: '+(error.message||error); return; }
+      if(statusEl) statusEl.textContent = 'Issue submitted.';
+      fetchAndRenderIssues(); setTimeout(hideIssueModal,900);
+    }catch(e){ console.warn('submitIssue error', e); if(document.getElementById('issue_status')) document.getElementById('issue_status').textContent = 'Error: '+(e.message||e); }
+  }
 
   // Expose to global surface for other scripts / UI wiring
-  window.MSUMapApp = Object.assign(window.MSUMapApp || {}, { sessionId, startActiveTracking, stopActiveTracking, refreshHeatmap });
+  window.MSUMapApp = Object.assign(window.MSUMapApp || {}, { sessionId, startActiveTracking, stopActiveTracking, refreshHeatmap, fetchAndRenderIssues, showIssueModal });
 
   // Attempt to wire heat toggle to start/stop server tracking when UI exists
   (function wireHeatToggle(){
@@ -235,5 +227,8 @@
       if(document.readyState === 'complete' || document.readyState === 'interactive') attach(); else document.addEventListener('DOMContentLoaded', attach);
     }catch(e){ /* ignore */ }
   })();
+
+  // Also wire custom event in case other script dispatches it
+  document.addEventListener('openReportModal', function(){ try{ showIssueModal(); }catch(e){} });
 
 })();
