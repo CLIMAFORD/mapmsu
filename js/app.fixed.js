@@ -109,11 +109,19 @@
         try{
           if(!row.lat || !row.lon) return;
           const col = (row.status === 'Resolved') ? '#10b981' : (row.status === 'In Progress' ? '#f59e0b' : '#ef4444');
-          const m = L.circleMarker([Number(row.lat), Number(row.lon)], { radius:8, fillColor: col, color:'#333', weight:1, fillOpacity:0.9 }).addTo(map);
-          const popup = `<div style="max-width:200px"><strong>${(row.status||'New')}</strong><div style="font-size:13px;margin-top:4px">${row.description||''}</div>${row.image_url?'<div style="margin-top:6px"><img src="'+row.image_url+'" style="width:100%;height:auto;border-radius:4px"/></div>':''}<div style="font-size:11px;color:#666;margin-top:6px">${new Date(row.created_at).toLocaleString()}</div></div>`;
-          m.bindPopup(popup);
+          let m = null;
+          if(row.image_url){
+            // Use a divIcon with the photo as background for a small round marker
+            const html = `<div class="issue-marker" style="width:28px;height:28px;border-radius:50%;background-image:url('${row.image_url}');background-size:cover;background-position:center;border:2px solid ${col};box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
+            const icon = L.divIcon({ className: '', html: html, iconSize: [28,28], iconAnchor: [14,14] });
+            m = L.marker([Number(row.lat), Number(row.lon)], { icon: icon }).addTo(map);
+          } else {
+            m = L.circleMarker([Number(row.lat), Number(row.lon)], { radius:8, fillColor: col, color:'#333', weight:1, fillOpacity:0.9 }).addTo(map);
+          }
+          const popup = `<div style="max-width:240px"><strong>${(row.status||'New')}</strong><div style="font-size:13px;margin-top:6px">${row.description||''}</div>${row.image_url?'<div style="margin-top:6px"><img src="'+row.image_url+'" style="width:100%;height:auto;border-radius:4px"/></div>':''}<div style="font-size:11px;color:#666;margin-top:6px">${row.created_at ? new Date(row.created_at).toLocaleString() : ''}</div></div>`;
+          if(m && typeof m.bindPopup === 'function') m.bindPopup(popup);
           _issueMarkers.push(m);
-        }catch(e){}
+        }catch(e){ console.warn('issue render error', e); }
       });
     }catch(e){ console.warn('fetchAndRenderIssues error', e); }
   }
