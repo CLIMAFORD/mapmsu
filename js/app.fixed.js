@@ -26,10 +26,13 @@
       } else if(window.supabase){
         supabase = window.supabase;
       }
-      if(supabase){ window.MSUMapApp = Object.assign(window.MSUMapApp || {}, { supabase }); try{ setupRealtimeSubscriptions(); }catch(e){} }
+      if(supabase){ window.supabase = supabase; window.MSUMapApp = Object.assign(window.MSUMapApp || {}, { supabase }); try{ setupRealtimeSubscriptions(); }catch(e){} }
       return supabase;
     }catch(e){ console.warn('Could not load supabase JS', e); return null; }
   }
+
+  // Expose loader globally so other scripts can call it
+  try{ window.loadSupabaseIfMissing = loadSupabaseIfMissing; }catch(e){}
 
   // Reporting UI and submit removed
 

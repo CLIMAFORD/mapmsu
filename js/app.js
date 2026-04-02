@@ -154,10 +154,11 @@
     const buildingId = feature.properties['new_bld_id'] || feature.properties['building_id'] || feature.properties['bld_id'] || null;
 
     // Ensure Supabase client (attempt load if missing)
-    await loadSupabaseIfMissing();
-    if(supabase){
+    if(typeof window.loadSupabaseIfMissing === 'function') await window.loadSupabaseIfMissing();
+    const client = window.supabase || (window.MSUMapApp && window.MSUMapApp.supabase) || null;
+    if(client){
       try{
-        let q = supabase.from('bld_images').select('*');
+        let q = client.from('bld_images').select('*');
         if(buildingId) q = q.eq('building_id', buildingId);
         else if(name) q = q.ilike('building_name', `%${name}%`).limit(50);
         const { data, error } = await q;
@@ -173,7 +174,7 @@
               if(path){
                 for(const b of buckets){
                   try{
-                    const pu = supabase.storage.from(b).getPublicUrl(path).data?.publicUrl;
+                    const pu = client.storage.from(b).getPublicUrl(path).data?.publicUrl;
                     if(pu){ url = pu; break; }
                   }catch(e){}
                 }
